@@ -83,3 +83,6 @@ style:
         value: 'FIXME:'
       - reason: 'Forbidden STOPSHIP marker in comment.'
         value: 'STOPSHIP:'
+  UtilityClassWithPublicConstructor:
+    active: true
+    excludes: [ '**/test/**' ]
