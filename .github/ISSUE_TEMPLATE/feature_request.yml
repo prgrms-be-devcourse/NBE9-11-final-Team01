@@ -1,0 +1,68 @@
+name: ✨ 기능 요청
+description: 새로운 기능이나 개선 사항을 제안합니다
+title: "[Feat] "
+labels: ["feat"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        좋은 아이디어를 공유해 주세요! 브랜치는 `feature/{이름}/{기능명}` 규칙을 따라 생성해주세요.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 📝 기능 요약
+      description: 어떤 기능을 추가/개선하고 싶은지 한 문장으로 설명해주세요.
+      placeholder: "예: Redis 기반 선착순 대기열 기능을 추가합니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 🎯 배경 및 목적
+      description: 왜 이 기능이 필요한지 설명해주세요.
+      placeholder: "예: 현재 JPA 비관적 락만으로는 대규모 동시 요청 처리에 한계가 있어 Redis 대기열이 필요합니다."
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: 🔧 구현 방안 (선택)
+      description: 구체적인 구현 아이디어가 있다면 작성해주세요.
+      placeholder: |
+        - Redis ZSET으로 대기열 구현
+        - 만료 시간 설정으로 이탈 사용자 처리
+        - 순번 조회 API 추가
+
+  - type: dropdown
+    id: commit_type
+    attributes:
+      label: 📌 커밋 타입
+      description: 이 작업에 해당하는 Conventional Commit 타입을 선택해주세요.
+      options:
+        - "feat: 새로운 기능 추가"
+        - "fix: 버그 수정"
+        - "refactor: 리팩토링 (기능 변경 없음)"
+        - "docs: 문서 수정"
+        - "test: 테스트 코드 추가/수정"
+    validations:
+      required: true
+
+  - type: input
+    id: branch
+    attributes:
+      label: 🌿 작업 브랜치명
+      placeholder: "예: feature/minji/waiting-queue"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ 사전 확인
+      options:
+        - label: 동시성 이슈가 발생할 수 있는 로직인지 검토했습니다
+        - label: 기존 API 스펙에 Breaking Change가 없는지 확인했습니다
+        - label: 관련 팀원과 사전 논의를 완료했습니다
