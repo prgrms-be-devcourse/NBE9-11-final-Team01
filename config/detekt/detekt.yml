@@ -1,0 +1,85 @@
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+  CyclomaticComplexMethod:
+    active: true
+    allowedComplexity: 15
+  LargeClass:
+    active: true
+    allowedLines: 600
+  LongMethod:
+    active: true
+    allowedLines: 60
+  LongParameterList:
+    active: true
+    allowedFunctionParameters: 6
+    allowedConstructorParameters: 7
+    ignoreDefaultParameters: false
+    ignoreDataClasses: true
+  NestedBlockDepth:
+    active: true
+    allowedDepth: 4
+  TooManyFunctions:
+    active: true
+    allowedFunctionsPerFile: 20
+    allowedFunctionsPerClass: 20
+    allowedFunctionsPerInterface: 20
+    allowedFunctionsPerObject: 20
+    allowedFunctionsPerEnum: 20
+    ignoreDeprecated: false
+    ignorePrivate: false
+    ignoreOverridden: false
+
+empty-blocks:
+  active: true
+  EmptyKotlinFile:
+    active: true
+
+naming:
+  active: true
+  FunctionNameMaxLength:
+    active: false
+  FunctionNameMinLength:
+    active: false
+
+style:
+  active: true
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludePackageStatements: true
+    excludeImportStatements: true
+  MayBeConstant:
+    active: true
+  RedundantVisibilityModifier:
+    active: false
+  RangeUntilInsteadOfRangeTo:
+    active: false
+  UnusedImport:
+    active: false
+  UnusedPrivateFunction:
+    active: true
+  UnusedPrivateProperty:
+    active: true
+    allowedNames: '_|ignored|expected|serialVersionUID'
+  UnusedPrivateClass:
+    active: true
+  ReturnCount:
+    active: true
+    max: 2
+    excludedFunctions:
+      - 'equals'
+  WildcardImport:
+    active: true
+    excludeImports:
+      - 'java.util.*'
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: 'Forbidden FIXME marker in comment, please fix the problem.'
+        value: 'FIXME:'
+      - reason: 'Forbidden STOPSHIP marker in comment.'
+        value: 'STOPSHIP:'
