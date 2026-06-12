@@ -1,3 +1,26 @@
 spring:
   application:
     name: snaptix
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
+    username: snaptix
+    password: snaptix1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create  # 개발 초기: create / 이후: update 또는 validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: 8080
