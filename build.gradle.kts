@@ -89,6 +89,7 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // Resilience4j (Circuit Breaker)
+    implementation("io.github.resilience4j:resilience4j-circuitbreaker:2.4.0")
     implementation("io.github.resilience4j:resilience4j-kotlin:2.4.0")
 
     // Structured Logging (JSON)
@@ -98,6 +99,7 @@ dependencies {
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
+    testImplementation("org.springframework.boot:spring-boot-starter-session-data-redis-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("io.mockk:mockk:1.14.11")
     implementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
