@@ -1,4 +1,4 @@
-package global.exception
+package com.develop.snaptix.global.exception
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest

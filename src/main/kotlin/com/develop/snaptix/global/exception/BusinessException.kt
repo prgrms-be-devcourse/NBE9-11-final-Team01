@@ -1,4 +1,4 @@
-package global.exception
+package com.develop.snaptix.global.exception
 
 import org.springframework.http.HttpStatus
 

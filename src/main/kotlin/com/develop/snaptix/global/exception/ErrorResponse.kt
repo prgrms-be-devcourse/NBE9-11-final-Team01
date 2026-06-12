@@ -1,4 +1,4 @@
-package global.exception
+package com.develop.snaptix.global.exception
 
 /**
  * 공통 에러 응답 DTO
