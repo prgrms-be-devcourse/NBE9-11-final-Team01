@@ -89,10 +89,10 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // Resilience4j (Circuit Breaker)
-    runtimeOnly("io.github.resilience4j:resilience4j-kotlin:2.4.0")
+    implementation("io.github.resilience4j:resilience4j-kotlin:2.4.0")
 
     // Structured Logging (JSON)
-    runtimeOnly("io.github.oshai:kotlin-logging-jvm:8.0.4")
+    implementation("io.github.oshai:kotlin-logging-jvm:8.0.4")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 
     // Test
