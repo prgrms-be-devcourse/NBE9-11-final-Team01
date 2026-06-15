@@ -1,5 +1,6 @@
 package global.exception
 
+import global.exception.redis.RateLimitExceededException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.core.Ordered
@@ -174,6 +175,20 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(ErrorCode.DUPLICATE_RESOURCE.toErrorResponse())
+    }
+
+    // ✅ 동일 ip에 대한 중복 요청 차단 (RateLimitExceededException)
+    @ExceptionHandler(RateLimitExceededException::class)
+    fun handleRateLimit(
+        ex: RateLimitExceededException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ErrorResponse> {
+        logger.warn { "[RATE_LIMIT] retryAfter=${ex.retryAfterSeconds}s, path=${request.requestURI}" }
+
+        return ResponseEntity
+            .status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", ex.retryAfterSeconds.toString())
+            .body(ex.toErrorResponse())
     }
 
     // ✅ Fallback: 예상치 못한 모든 예외 (보안 고려 — 스택트레이스 노출 금지)
