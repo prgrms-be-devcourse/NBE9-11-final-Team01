@@ -1,4 +1,4 @@
-package global.filter
+package com.develop.snaptix.global.filter
 
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest

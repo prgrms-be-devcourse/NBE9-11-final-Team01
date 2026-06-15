@@ -1,8 +1,5 @@
 package com.develop.snaptix.global.exception
 
-import global.exception.BusinessException
-import global.exception.ErrorCode
-import global.exception.GlobalExceptionHandler
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.junit.jupiter.api.BeforeEach

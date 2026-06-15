@@ -1,6 +1,6 @@
-package global.exception
+package com.develop.snaptix.global.exception
 
-import global.exception.redis.RateLimitExceededException
+import com.develop.snaptix.global.exception.redis.RateLimitExceededException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.core.Ordered

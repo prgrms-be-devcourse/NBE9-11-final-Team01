@@ -1,4 +1,4 @@
-package global.aop.type
+package com.develop.snaptix.global.aop.type
 
 object AspectOrder {
     const val CIRCUIT_BREAKER = 1 // Redis 자체가 살아있는지 먼저 확인

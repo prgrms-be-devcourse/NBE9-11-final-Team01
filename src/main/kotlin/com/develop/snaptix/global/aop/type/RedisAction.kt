@@ -1,4 +1,4 @@
-package global.aop.type
+package com.develop.snaptix.global.aop.type
 
 enum class RedisAction {
     LUASCRIPT_DECREASE, // 재고 원자 차감 Lua Script
