@@ -2,16 +2,14 @@ package com.develop.snaptix.global.security.config
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(SecurityTestController::class)
+@WebMvcTest(controllers = [SecurityTestController::class])
+@Import(SecurityConfig::class)
 class SecurityConfigTest(
     @Autowired private val mockMvc: MockMvc,
 ) {
