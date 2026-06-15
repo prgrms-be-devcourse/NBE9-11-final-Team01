@@ -2,6 +2,7 @@ package com.develop.snaptix.global.security.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -29,9 +30,11 @@ class SecurityConfig {
                     .requestMatchers(
                         "/api/v1/auth/signup",
                         "/api/v1/auth/login",
-                        "/api/v1/events",
-                        "/api/v1/events/*",
                         "/actuator/health",
+                    ).permitAll()
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/api/v1/events/**",
                     ).permitAll()
                     .requestMatchers("/api/v1/admin/**")
                     .hasRole("ADMIN")
