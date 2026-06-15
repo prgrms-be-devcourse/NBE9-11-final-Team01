@@ -18,3 +18,8 @@ spring:
 
 server:
   port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:snaptix-local-jwt-secret-key-for-development-only-32bytes}
+  access-token-expiration-seconds: 600
+  refresh-token-expiration-seconds: 604800
