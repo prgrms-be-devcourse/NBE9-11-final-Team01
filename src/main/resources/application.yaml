@@ -2,6 +2,10 @@ spring:
   application:
     name: snaptix
 
+  profiles:
+    active: dev
+    include: secret
+
   datasource:
     url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
     username: snaptix
