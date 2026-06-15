@@ -19,7 +19,9 @@ Kotlin 공식 코딩 컨벤션 기반의 코드 스타일 검사 도구입니다
 ```bash
 # 스타일 위반 검사
 ./gradlew ktlintCheck
+```
 
+```bash
 # 자동 수정 (수정 가능한 항목에 한해)
 ./gradlew ktlintFormat
 ```
