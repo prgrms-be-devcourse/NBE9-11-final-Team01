@@ -64,6 +64,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-session-data-redis")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
+    // Aspect Annotation
+    implementation("org.aspectj:aspectjweaver")
+
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
