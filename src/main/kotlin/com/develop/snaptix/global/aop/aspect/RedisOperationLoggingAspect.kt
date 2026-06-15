@@ -1,8 +1,8 @@
-package global.aop.aspect
+package com.develop.snaptix.global.aop.aspect
 
-import global.aop.annotation.RedisOperation
-import global.aop.type.AspectOrder
-import global.aop.type.RedisAction
+import com.develop.snaptix.global.aop.annotation.RedisOperation
+import com.develop.snaptix.global.aop.type.AspectOrder
+import com.develop.snaptix.global.aop.type.RedisAction
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around

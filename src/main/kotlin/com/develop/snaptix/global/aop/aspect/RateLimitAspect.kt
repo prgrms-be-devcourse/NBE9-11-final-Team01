@@ -1,7 +1,7 @@
-package global.aop.aspect
-import global.aop.annotation.RateLimit
-import global.aop.type.AspectOrder
-import global.exception.redis.RateLimitExceededException
+package com.develop.snaptix.global.aop.aspect
+import com.develop.snaptix.global.aop.annotation.RateLimit
+import com.develop.snaptix.global.aop.type.AspectOrder
+import com.develop.snaptix.global.exception.redis.RateLimitExceededException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around

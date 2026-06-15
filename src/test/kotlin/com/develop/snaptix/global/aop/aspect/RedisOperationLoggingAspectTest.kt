@@ -1,8 +1,7 @@
 package com.develop.snaptix.global.aop.aspect
 
-import global.aop.annotation.RedisOperation
-import global.aop.aspect.RedisOperationLoggingAspect
-import global.aop.type.RedisAction
+import com.develop.snaptix.global.aop.annotation.RedisOperation
+import com.develop.snaptix.global.aop.type.RedisAction
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test

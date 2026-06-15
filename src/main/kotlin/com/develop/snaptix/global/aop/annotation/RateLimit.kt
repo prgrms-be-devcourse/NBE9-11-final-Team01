@@ -1,4 +1,4 @@
-package global.aop.annotation
+package com.develop.snaptix.global.aop.annotation
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)

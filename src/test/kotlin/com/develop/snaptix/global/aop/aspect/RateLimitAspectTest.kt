@@ -1,7 +1,6 @@
 package com.develop.snaptix.global.aop.aspect
-import global.aop.annotation.RateLimit
-import global.aop.aspect.RateLimitAspect
-import global.exception.redis.RateLimitExceededException
+import com.develop.snaptix.global.aop.annotation.RateLimit
+import com.develop.snaptix.global.exception.redis.RateLimitExceededException
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
