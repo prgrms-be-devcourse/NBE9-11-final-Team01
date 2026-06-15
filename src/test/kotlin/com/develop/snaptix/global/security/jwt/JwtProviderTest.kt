@@ -47,4 +47,16 @@ class JwtProviderTest {
     fun `잘못된 token은 유효하지 않다`() {
         assertThat(jwtProvider.isValid("invalid-token")).isFalse()
     }
+
+    @Test
+    fun `만료된 token은 유효하지 않다`() {
+        val token = jwtProvider.createAccessToken(userId = 3L, role = UserRole.USER)
+        val expiredJwtProvider =
+            JwtProvider(
+                jwtProperties = properties,
+                clock = Clock.fixed(Instant.parse("2026-06-15T00:11:00Z"), ZoneOffset.UTC),
+            )
+
+        assertThat(expiredJwtProvider.isValid(token)).isFalse()
+    }
 }
