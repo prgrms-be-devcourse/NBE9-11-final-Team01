@@ -1,8 +1,7 @@
 package com.develop.snaptix.global.filter
 
-import global.filter.TraceIdFilter
-import global.filter.TraceIdFilter.Companion.TRACE_ID_HEADER
-import global.filter.TraceIdFilter.Companion.TRACE_ID_KEY
+import com.develop.snaptix.global.filter.TraceIdFilter.Companion.TRACE_ID_HEADER
+import com.develop.snaptix.global.filter.TraceIdFilter.Companion.TRACE_ID_KEY
 import jakarta.servlet.FilterChain
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach

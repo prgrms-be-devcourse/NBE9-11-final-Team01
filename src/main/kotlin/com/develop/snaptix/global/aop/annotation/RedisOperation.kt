@@ -1,6 +1,6 @@
-package global.aop.annotation
+package com.develop.snaptix.global.aop.annotation
 
-import global.aop.type.RedisAction
+import com.develop.snaptix.global.aop.type.RedisAction
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
