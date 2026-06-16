@@ -1,6 +1,8 @@
 package com.develop.snaptix.domain.event.entity
 
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
+import org.jetbrains.exposed.sql.javatime.timestamp
 
 object ZonesTable : Table("zones") {
     val id = long("id").autoIncrement()
@@ -9,8 +11,8 @@ object ZonesTable : Table("zones") {
     val name = varchar("name", 255)
     val unitPrice = integer("unit_price")
     val totalCapacity = integer("total_capacity")
-    val createdAt = varchar("created_at", 50)
-    val updatedAt = varchar("updated_at", 50)
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
 
     override val primaryKey = PrimaryKey(id)
 }
