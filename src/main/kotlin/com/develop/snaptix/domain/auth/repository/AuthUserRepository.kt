@@ -19,6 +19,22 @@ class AuthUserRepository {
                 .any()
         }
 
+    fun findByEmail(email: String): AuthUserRecord? =
+        transaction {
+            UsersTable
+                .selectAll()
+                .where { UsersTable.email eq email }
+                .limit(1)
+                .map {
+                    AuthUserRecord(
+                        id = it[UsersTable.id],
+                        email = it[UsersTable.email],
+                        password = it[UsersTable.password],
+                        role = UserRole.valueOf(it[UsersTable.role]),
+                    )
+                }.firstOrNull()
+        }
+
     fun saveUser(
         email: String,
         encodedPassword: String,
