@@ -3,19 +3,22 @@ package com.develop.snaptix.domain.event.dto
 import java.time.Instant
 
 enum class EventStatus {
-    PENDING, ON_SALE, SOLD_OUT, CLOSED
+    PENDING,
+    ON_SALE,
+    SOLD_OUT,
+    CLOSED,
 }
 
 data class PageResponse<T>(
     val content: List<T>,
-    val pageable: PageableMeta
+    val pageable: PageableMeta,
 )
 
 data class PageableMeta(
     val pageNumber: Int,
     val pageSize: Int,
     val totalElements: Long,
-    val totalPages: Int
+    val totalPages: Int,
 )
 
 data class EventResponse(
@@ -26,7 +29,7 @@ data class EventResponse(
     val posterUrl: String?,
     val status: EventStatus,
     val minPrice: Int,
-    val isSoldOut: Boolean
+    val isSoldOut: Boolean,
 )
 
 data class EventDetailResponse(
@@ -38,7 +41,7 @@ data class EventDetailResponse(
     val startTime: Instant,
     val endTime: Instant,
     val status: EventStatus,
-    val zones: List<ZoneStockResponse>
+    val zones: List<ZoneStockResponse>,
 )
 
 data class ZoneStockResponse(
@@ -46,5 +49,5 @@ data class ZoneStockResponse(
     val name: String,
     val unitPrice: Int,
     val totalCapacity: Int,
-    val currentStock: Int
+    val currentStock: Int,
 )

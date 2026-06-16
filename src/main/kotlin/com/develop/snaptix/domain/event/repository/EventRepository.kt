@@ -11,9 +11,7 @@ import java.time.ZoneId
 
 @Repository
 class EventRepository {
-    
-    fun findByPublicId(publicId: String): ResultRow? =
-        EventsTable.select { EventsTable.publicId eq publicId }.singleOrNull()
+    fun findByPublicId(publicId: String): ResultRow? = EventsTable.select { EventsTable.publicId eq publicId }.singleOrNull()
 
     fun findEventsWithFilters(
         status: String,
@@ -23,7 +21,7 @@ class EventRepository {
         page: Int,
         size: Int,
         sortBy: String,
-        sortDir: String
+        sortDir: String,
     ): Pair<List<ResultRow>, Long> {
         val query = EventsTable.select { EventsTable.status eq status }
 
@@ -39,11 +37,12 @@ class EventRepository {
 
         val totalElements = query.count()
 
-        val sortColumn = when (sortBy) {
-            "name" -> EventsTable.name
-            "createdAt" -> EventsTable.createdAt
-            else -> EventsTable.startTime
-        }
+        val sortColumn =
+            when (sortBy) {
+                "name" -> EventsTable.name
+                "createdAt" -> EventsTable.createdAt
+                else -> EventsTable.startTime
+            }
         val sortOrder = if (sortDir.lowercase() == "desc") SortOrder.DESC else SortOrder.ASC
         query.orderBy(sortColumn to sortOrder)
 
