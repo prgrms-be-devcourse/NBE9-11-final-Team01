@@ -27,16 +27,15 @@ class EventController(
         @RequestParam(required = false) startDate: LocalDate?,
         @RequestParam(required = false) endDate: LocalDate?,
     ): ResponseEntity<PageResponse<EventResponse>> {
-        val response =
-            eventService.getEvents(
-                page = page,
-                size = size,
-                sortBy = sortBy,
-                sortDir = sortDir,
-                location = location,
-                startDate = startDate,
-                endDate = endDate,
-            )
+        val response = eventService.getEvents(
+            page = page,
+            size = size,
+            sortBy = sortBy,
+            sortDir = sortDir,
+            location = location,
+            startDate = startDate,
+            endDate = endDate,
+        )
         return ResponseEntity.ok(response)
     }
 

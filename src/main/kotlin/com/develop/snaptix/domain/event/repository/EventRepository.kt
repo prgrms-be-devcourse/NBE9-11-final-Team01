@@ -12,11 +12,13 @@ import org.jetbrains.exposed.sql.selectAll
 import java.time.LocalDate
 
 class EventRepository {
-    fun findByPublicId(eventPublicId: String): ResultRow? =
-        EventsTable
+
+    fun findByPublicId(eventPublicId: String): ResultRow? {
+        return EventsTable
             .selectAll()
             .where { EventsTable.publicId eq eventPublicId }
             .singleOrNull()
+    }
 
     @Suppress("LongParameterList")
     fun findEventsWithFilters(
@@ -29,10 +31,9 @@ class EventRepository {
         sortBy: String,
         sortDir: String,
     ): Pair<List<ResultRow>, Long> {
-        var query =
-            EventsTable
-                .selectAll()
-                .where { EventsTable.status eq status }
+        var query = EventsTable
+            .selectAll()
+            .where { EventsTable.status eq status }
 
         location?.let {
             query = query.andWhere { EventsTable.location like "%$it%" }
@@ -46,25 +47,22 @@ class EventRepository {
 
         val totalElements = query.count()
 
-        val orderDir =
-            if (sortDir.lowercase() == "desc") {
-                SortOrder.DESC
-            } else {
-                SortOrder.ASC
-            }
+        val orderDir = if (sortDir.lowercase() == "desc") {
+            SortOrder.DESC
+        } else {
+            SortOrder.ASC
+        }
 
-        val orderColumn =
-            when (sortBy) {
-                "createdAt" -> EventsTable.createdAt
-                "name" -> EventsTable.name
-                else -> EventsTable.startTime
-            }
+        val orderColumn = when (sortBy) {
+            "createdAt" -> EventsTable.createdAt
+            "name" -> EventsTable.name
+            else -> EventsTable.startTime
+        }
 
-        val eventRows =
-            query
-                .orderBy(orderColumn to orderDir)
-                .limit(size, offset = (page * size).toLong())
-                .toList()
+        val eventRows = query
+            .orderBy(orderColumn to orderDir)
+            .limit(size, offset = (page * size).toLong())
+            .toList()
 
         return Pair(eventRows, totalElements)
     }
