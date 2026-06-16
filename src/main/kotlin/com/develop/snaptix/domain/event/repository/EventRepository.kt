@@ -38,10 +38,10 @@ class EventRepository {
             query = query.andWhere { EventsTable.location like "%$it%" }
         }
         startDate?.let {
-            query = query.andWhere { EventsTable.startTime greaterEq it.toString() }
+            query = query.andWhere { EventsTable.startTime greaterEq it.atStartOfDay() }
         }
         endDate?.let {
-            query = query.andWhere { EventsTable.endTime less it.toString() }
+            query = query.andWhere { EventsTable.endTime less it.atStartOfDay() }
         }
 
         val totalElements = query.count()

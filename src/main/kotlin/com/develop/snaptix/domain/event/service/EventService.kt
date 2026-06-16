@@ -36,7 +36,7 @@ class EventService(
         startDate: LocalDate?,
         endDate: LocalDate?,
     ): PageResponse<EventResponse> {
-        val (eventRows, totalElements) =
+        val (eventRows: List<ResultRow>, totalElements: Long) =
             transaction {
                 eventRepository.findEventsWithFilters(
                     status = EventStatus.ON_SALE.name,
@@ -54,8 +54,8 @@ class EventService(
             return createEmptyPageResponse(page, size)
         }
 
-        val eventIds = eventRows.map { it[EventsTable.id] }
-        val allZoneRows =
+        val eventIds: List<Long> = eventRows.map { row: ResultRow -> row[EventsTable.id] }
+        val allZoneRows: List<ResultRow> =
             transaction {
                 ZonesTable
                     .selectAll()
@@ -63,13 +63,16 @@ class EventService(
                     .toList()
             }
 
-        val stockMap = fetchStockMap(allZoneRows)
-        val zonesByEventId = allZoneRows.groupBy { it[ZonesTable.eventId] }
+        val stockMap: Map<Long, Int> = fetchStockMap(allZoneRows)
+        val zonesByEventId: Map<Long, List<ResultRow>> =
+            allZoneRows.groupBy { row: ResultRow ->
+                row[ZonesTable.eventId]
+            }
 
-        val content =
-            eventRows.map { row ->
-                val eventInternalId = row[EventsTable.id]
-                val zoneRows = zonesByEventId[eventInternalId] ?: emptyList()
+        val content: List<EventResponse> =
+            eventRows.map { row: ResultRow ->
+                val eventInternalId: Long = row[EventsTable.id]
+                val zoneRows: List<ResultRow> = zonesByEventId[eventInternalId] ?: emptyList()
                 createEventResponse(row, zoneRows, stockMap)
             }
 
@@ -88,13 +91,13 @@ class EventService(
 
     /** Story 11.2: 이벤트 상세 및 실시간 재고 조회 */
     fun getEventDetail(eventPublicId: String): EventDetailResponse {
-        val (eventRow, zoneRows) =
+        val (eventRow: ResultRow, zoneRows: List<ResultRow>) =
             transaction {
-                val event =
+                val event: ResultRow =
                     eventRepository.findByPublicId(eventPublicId)
                         ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
 
-                val zones =
+                val zones: List<ResultRow> =
                     ZonesTable
                         .selectAll()
                         .where { ZonesTable.eventId eq event[EventsTable.id] }
@@ -103,12 +106,12 @@ class EventService(
                 Pair(event, zones)
             }
 
-        val stockMap = fetchStockMap(zoneRows)
+        val stockMap: Map<Long, Int> = fetchStockMap(zoneRows)
 
-        val zoneResponses =
-            zoneRows.map { zoneRow ->
-                val zoneInternalId = zoneRow[ZonesTable.id]
-                val currentStock = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
+        val zoneResponses: List<ZoneStockResponse> =
+            zoneRows.map { zoneRow: ResultRow ->
+                val zoneInternalId: Long = zoneRow[ZonesTable.id]
+                val currentStock: Int = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
 
                 ZoneStockResponse(
                     zoneId = zoneRow[ZonesTable.publicId],
@@ -133,19 +136,20 @@ class EventService(
     }
 
     private fun fetchStockMap(zoneRows: List<ResultRow>): Map<Long, Int> {
-        val zoneIds = zoneRows.map { it[ZonesTable.id] }
-        val redisKeys = zoneIds.map { "ZONE:$it:stock" }
-        val redisStocks =
+        val zoneIds: List<Long> = zoneRows.map { row: ResultRow -> row[ZonesTable.id] }
+        val redisKeys: List<String> = zoneIds.map { id: Long -> "ZONE:$id:stock" }
+        val redisStocks: List<String?> =
             if (redisKeys.isNotEmpty()) {
-                redisTemplate.opsForValue().multiGet(redisKeys)
+                redisTemplate.opsForValue().multiGet(redisKeys) ?: emptyList()
             } else {
                 emptyList()
             }
 
         return zoneIds
             .zip(redisStocks)
-            .mapNotNull { (id, stock) -> stock?.toIntOrNull()?.let { id to it } }
-            .toMap()
+            .mapNotNull { (id: Long, stock: String?) ->
+                stock?.toIntOrNull()?.let { intStock: Int -> id to intStock }
+            }.toMap()
     }
 
     private fun createEventResponse(
@@ -153,12 +157,12 @@ class EventService(
         zoneRows: List<ResultRow>,
         stockMap: Map<Long, Int>,
     ): EventResponse {
-        val minPrice = zoneRows.minOfOrNull { it[ZonesTable.unitPrice] } ?: 0
-        val isSoldOut =
+        val minPrice: Int = zoneRows.minOfOrNull { zoneRow: ResultRow -> zoneRow[ZonesTable.unitPrice] } ?: 0
+        val isSoldOut: Boolean =
             zoneRows.isNotEmpty() &&
-                zoneRows.all { zoneRow ->
-                    val zoneInternalId = zoneRow[ZonesTable.id]
-                    val currentStock = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
+                zoneRows.all { zoneRow: ResultRow ->
+                    val zoneInternalId: Long = zoneRow[ZonesTable.id]
+                    val currentStock: Int = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
                     currentStock <= 0
                 }
 

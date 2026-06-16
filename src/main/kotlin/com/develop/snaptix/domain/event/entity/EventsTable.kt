@@ -1,23 +1,19 @@
 package com.develop.snaptix.domain.event.entity
 
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
-import org.jetbrains.exposed.sql.javatime.timestamp
 
 object EventsTable : Table("events") {
     val id = long("id").autoIncrement()
     val publicId = varchar("public_id", 36).uniqueIndex()
     val name = varchar("name", 255)
-    val description = text("description").nullable()
+    val description = text("description")
     val location = varchar("location", 255)
-    val startTime = timestamp("start_time")
-    val endTime = timestamp("end_time")
+    val startTime = varchar("start_time", 50)
+    val endTime = varchar("end_time", 50)
+    val status = varchar("status", 50)
     val posterUrl = varchar("poster_url", 500).nullable()
-
-    // PENDING, ON_SALE, SOLD_OUT, CLOSED
-    val status = varchar("status", 20)
-    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
-    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    val createdAt = varchar("created_at", 50)
+    val updatedAt = varchar("updated_at", 50)
 
     override val primaryKey = PrimaryKey(id)
 }
