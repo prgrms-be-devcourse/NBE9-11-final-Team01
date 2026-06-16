@@ -55,7 +55,10 @@ class EventService(
             return createEmptyPageResponse(page, size)
         }
 
-        val eventIds: List<Long> = eventRows.map { row: ResultRow -> row[EventsTable.id] as Long }
+        val eventIds: List<Long> =
+            eventRows.map { row: ResultRow ->
+                row[EventsTable.id] as Long
+            }
         val allZoneRows: List<ResultRow> =
             transaction {
                 ZonesTable
@@ -129,16 +132,22 @@ class EventService(
             description = eventRow[EventsTable.description] as? String,
             location = eventRow[EventsTable.location] as String,
             posterUrl = eventRow[EventsTable.posterUrl] as? String,
-            startTime = (eventRow[EventsTable.startTime] as Instant).toString(),
-            endTime = (eventRow[EventsTable.endTime] as Instant).toString(),
+            startTime = eventRow[EventsTable.startTime] as Instant,
+            endTime = eventRow[EventsTable.endTime] as Instant,
             status = EventStatus.valueOf(eventRow[EventsTable.status] as String),
             zones = zoneResponses,
         )
     }
 
     private fun fetchStockMap(zoneRows: List<ResultRow>): Map<Long, Int> {
-        val zoneIds: List<Long> = zoneRows.map { row: ResultRow -> row[ZonesTable.id] as Long }
-        val redisKeys: List<String> = zoneIds.map { id: Long -> "ZONE:$id:stock" }
+        val zoneIds: List<Long> =
+            zoneRows.map { row: ResultRow ->
+                row[ZonesTable.id] as Long
+            }
+        val redisKeys: List<String> =
+            zoneIds.map { id: Long ->
+                "ZONE:$id:stock"
+            }
         val redisStocks: List<String?> =
             if (redisKeys.isNotEmpty()) {
                 redisTemplate.opsForValue().multiGet(redisKeys) ?: emptyList()
@@ -174,7 +183,7 @@ class EventService(
             eventId = row[EventsTable.publicId] as String,
             name = row[EventsTable.name] as String,
             location = row[EventsTable.location] as String,
-            startTime = (row[EventsTable.startTime] as Instant).toString(),
+            startTime = row[EventsTable.startTime] as Instant,
             posterUrl = row[EventsTable.posterUrl] as? String,
             status = EventStatus.valueOf(row[EventsTable.status] as String),
             minPrice = minPrice,
