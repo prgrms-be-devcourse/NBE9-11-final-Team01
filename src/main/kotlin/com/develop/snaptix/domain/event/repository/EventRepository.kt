@@ -3,16 +3,22 @@ package com.develop.snaptix.domain.event.repository
 import com.develop.snaptix.domain.event.entity.EventsTable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.andWhere
-import org.jetbrains.exposed.sql.select
-import org.springframework.stereotype.Repository
+import org.jetbrains.exposed.sql.selectAll
 import java.time.LocalDate
-import java.time.ZoneId
 
-@Repository
 class EventRepository {
-    fun findByPublicId(publicId: String): ResultRow? = EventsTable.select { EventsTable.publicId eq publicId }.singleOrNull()
+    fun findByPublicId(eventPublicId: String): ResultRow? =
+        EventsTable
+            .selectAll()
+            .where { EventsTable.publicId eq eventPublicId }
+            .singleOrNull()
 
+    @Suppress("LongParameterList")
     fun findEventsWithFilters(
         status: String,
         location: String?,
@@ -23,31 +29,43 @@ class EventRepository {
         sortBy: String,
         sortDir: String,
     ): Pair<List<ResultRow>, Long> {
-        val query = EventsTable.select { EventsTable.status eq status }
+        var query =
+            EventsTable
+                .selectAll()
+                .where { EventsTable.status eq status }
 
-        location?.let { query.andWhere { EventsTable.location like "%$it%" } }
+        location?.let {
+            query = query.andWhere { EventsTable.location like "%$it%" }
+        }
         startDate?.let {
-            val startInstant = it.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant()
-            query.andWhere { EventsTable.startTime greaterEq startInstant }
+            query = query.andWhere { EventsTable.startTime greaterEq it.toString() }
         }
         endDate?.let {
-            val endInstant = it.plusDays(1).atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant()
-            query.andWhere { EventsTable.startTime less endInstant }
+            query = query.andWhere { EventsTable.endTime less it.toString() }
         }
 
         val totalElements = query.count()
 
-        val sortColumn =
+        val orderDir =
+            if (sortDir.lowercase() == "desc") {
+                SortOrder.DESC
+            } else {
+                SortOrder.ASC
+            }
+
+        val orderColumn =
             when (sortBy) {
-                "name" -> EventsTable.name
                 "createdAt" -> EventsTable.createdAt
+                "name" -> EventsTable.name
                 else -> EventsTable.startTime
             }
-        val sortOrder = if (sortDir.lowercase() == "desc") SortOrder.DESC else SortOrder.ASC
-        query.orderBy(sortColumn to sortOrder)
 
-        query.limit(size, offset = (page * size).toLong())
+        val eventRows =
+            query
+                .orderBy(orderColumn to orderDir)
+                .limit(size, offset = (page * size).toLong())
+                .toList()
 
-        return query.toList() to totalElements
+        return Pair(eventRows, totalElements)
     }
 }
