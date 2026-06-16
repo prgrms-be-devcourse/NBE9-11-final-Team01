@@ -152,4 +152,30 @@ class AuthControllerTest {
                 jsonPath("$.message") { value(ErrorCode.INVALID_LOGIN_CREDENTIALS.message) }
             }
     }
+
+    @Test
+    fun `로그아웃 성공 시 인증 쿠키를 만료시킨다`() {
+        val result =
+            mockMvc
+                .post("/api/v1/auth/logout")
+                .andExpect {
+                    status { isOk() }
+                    jsonPath("$.message") { value("로그아웃이 성공적으로 처리되었습니다.") }
+                }.andReturn()
+
+        val setCookieHeaders = result.response.getHeaders("Set-Cookie")
+        assertThat(setCookieHeaders).hasSize(2)
+        assertThat(setCookieHeaders).anySatisfy {
+            assertThat(it)
+                .contains("accessToken=")
+                .contains("Max-Age=0")
+                .contains("Path=/")
+        }
+        assertThat(setCookieHeaders).anySatisfy {
+            assertThat(it)
+                .contains("refreshToken=")
+                .contains("Max-Age=0")
+                .contains("Path=/api/v1/auth/refresh")
+        }
+    }
 }
