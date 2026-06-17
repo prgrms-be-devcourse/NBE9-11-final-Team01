@@ -223,7 +223,8 @@ class AuthIntegrationTest(
 
     private fun List<String>.toRequestCookie(name: String): Cookie {
         val header =
-            first { it.startsWith("$name=") }
+            firstOrNull { it.startsWith("$name=") }
+                ?: error("Set-Cookie 헤더에서 '$name' 쿠키를 찾을 수 없습니다")
         val value =
             header
                 .substringAfter("$name=")
