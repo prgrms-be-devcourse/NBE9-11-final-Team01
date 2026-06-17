@@ -10,6 +10,7 @@ import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 class EventRepository {
     fun findByPublicId(eventPublicId: String): ResultRow? =
@@ -38,10 +39,18 @@ class EventRepository {
             query = query.andWhere { EventsTable.location like "%$it%" }
         }
         startDate?.let {
-            query = query.andWhere { EventsTable.startTime greaterEq it.atStartOfDay() }
+            // LocalDateTime을 DB 컬럼 타입인 Instant로 변환
+            query =
+                query.andWhere {
+                    EventsTable.startTime greaterEq it.atStartOfDay().toInstant(ZoneOffset.UTC)
+                }
         }
         endDate?.let {
-            query = query.andWhere { EventsTable.endTime less it.atStartOfDay() }
+            // LocalDateTime을 DB 컬럼 타입인 Instant로 변환
+            query =
+                query.andWhere {
+                    EventsTable.endTime less it.atStartOfDay().toInstant(ZoneOffset.UTC)
+                }
         }
 
         val totalElements = query.count()
@@ -63,7 +72,7 @@ class EventRepository {
         val eventRows =
             query
                 .orderBy(orderColumn to orderDir)
-                .limit(size, offset = (page * size).toLong())
+                .limit(size, (page * size).toLong()) // 네임드 파라미터(offset=) 제거
                 .toList()
 
         return Pair(eventRows, totalElements)
