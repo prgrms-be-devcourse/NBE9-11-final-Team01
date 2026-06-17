@@ -45,7 +45,7 @@ class RedisOperationLoggingAspectTest {
         @RedisOperation(action = RedisAction.LUASCRIPT_DECREASE)
         open fun successOperation(): Long = 10L
 
-        @RedisOperation(action = RedisAction.QUEUE_PUSH)
+        @RedisOperation(action = RedisAction.QUEUE_XADD)
         open fun failOperation(): Unit = throw IllegalStateException("Redis 연결 실패")
 
         open fun noAnnotationOperation(): String = "no-aspect"
