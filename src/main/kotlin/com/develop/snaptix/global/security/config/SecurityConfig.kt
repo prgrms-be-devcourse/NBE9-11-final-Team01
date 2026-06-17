@@ -9,9 +9,8 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
+import org.springframework.security.config.annotation.web.invoke
 import org.springframework.security.config.http.SessionCreationPolicy
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 
@@ -19,45 +18,35 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 class SecurityConfig {
     @Bean
-    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
-
-    @Bean
     fun securityFilterChain(
         http: HttpSecurity,
         jwtAuthenticationFilter: ObjectProvider<JwtAuthenticationFilter>,
-        authenticationEntryPoint: CustomAuthenticationEntryPoint,
-        accessDeniedHandler: CustomAccessDeniedHandler,
+        customAuthenticationEntryPoint: CustomAuthenticationEntryPoint,
+        customAccessDeniedHandler: CustomAccessDeniedHandler,
     ): SecurityFilterChain {
-        http
-            .csrf { it.disable() }
-            .formLogin { it.disable() }
-            .httpBasic { it.disable() }
-            .logout { it.disable() }
-            .exceptionHandling {
-                it.authenticationEntryPoint(authenticationEntryPoint)
-                it.accessDeniedHandler(accessDeniedHandler)
-            }.sessionManagement {
-                it.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            }.authorizeHttpRequests {
-                it
-                    .requestMatchers(
-                        "/api/v1/auth/signup",
-                        "/api/v1/auth/login",
-                        "/actuator/health",
-                    ).permitAll()
-                    .requestMatchers(
-                        HttpMethod.GET,
-                        "/api/v1/events/**",
-                    ).permitAll()
-                    .requestMatchers("/api/v1/admin/**")
-                    .hasRole("ADMIN")
-                    .requestMatchers("/api/v1/staff/**")
-                    .hasAnyRole("STAFF", "ADMIN")
-                    .requestMatchers("/actuator/metrics/**")
-                    .hasRole("ADMIN")
-                    .anyRequest()
-                    .authenticated()
+        http {
+            csrf { disable() }
+            formLogin { disable() }
+            httpBasic { disable() }
+            logout { disable() }
+            exceptionHandling {
+                authenticationEntryPoint = customAuthenticationEntryPoint
+                accessDeniedHandler = customAccessDeniedHandler
             }
+            sessionManagement {
+                sessionCreationPolicy = SessionCreationPolicy.STATELESS
+            }
+            authorizeHttpRequests {
+                authorize("/api/v1/auth/signup", permitAll)
+                authorize("/api/v1/auth/login", permitAll)
+                authorize("/actuator/health", permitAll)
+                authorize(HttpMethod.GET, "/api/v1/events/**", permitAll)
+                authorize("/api/v1/admin/**", hasRole("ADMIN"))
+                authorize("/api/v1/staff/**", hasAnyRole("STAFF", "ADMIN"))
+                authorize("/actuator/metrics/**", hasRole("ADMIN"))
+                authorize(anyRequest, authenticated)
+            }
+        }
 
         jwtAuthenticationFilter.ifAvailable {
             http.addFilterBefore(it, UsernamePasswordAuthenticationFilter::class.java)
