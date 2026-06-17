@@ -38,3 +38,12 @@ resilience4j:
         record-failure-predicate: com.develop.snaptix.global.aop.aspect.RedisExceptionPredicate
         ignore-exceptions:
           - com.develop.snaptix.global.exception.BusinessException
+
+alert:
+  slack:
+    enabled: false
+    webhook-url: ${SLACK_WEBHOOK_URL:}
+    channel: ${SLACK_CHANNEL:#ticketing-redis-alerts}
+    mention-on-critical: false
+  throttle:
+    window-seconds: 300
