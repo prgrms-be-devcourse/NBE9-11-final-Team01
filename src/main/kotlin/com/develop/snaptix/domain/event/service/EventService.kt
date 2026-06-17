@@ -18,7 +18,6 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
-import java.time.Instant
 import java.time.LocalDate
 
 @Service
@@ -57,7 +56,7 @@ class EventService(
 
         val eventIds: List<Long> =
             eventRows.map { row: ResultRow ->
-                row[EventsTable.id] as Long
+                row[EventsTable.id]
             }
         val allZoneRows: List<ResultRow> =
             transaction {
@@ -70,12 +69,12 @@ class EventService(
         val stockMap: Map<Long, Int> = fetchStockMap(allZoneRows)
         val zonesByEventId: Map<Long, List<ResultRow>> =
             allZoneRows.groupBy { row: ResultRow ->
-                row[ZonesTable.eventId] as Long
+                row[ZonesTable.eventId]
             }
 
         val content: List<EventResponse> =
             eventRows.map { row: ResultRow ->
-                val eventInternalId: Long = row[EventsTable.id] as Long
+                val eventInternalId: Long = row[EventsTable.id]
                 val zoneRows: List<ResultRow> = zonesByEventId[eventInternalId] ?: emptyList()
                 createEventResponse(row, zoneRows, stockMap)
             }
@@ -104,7 +103,7 @@ class EventService(
                 val zones: List<ResultRow> =
                     ZonesTable
                         .selectAll()
-                        .where { ZonesTable.eventId eq (event[EventsTable.id] as Long) }
+                        .where { ZonesTable.eventId eq event[EventsTable.id] }
                         .toList()
 
                 Pair(event, zones)
@@ -114,27 +113,27 @@ class EventService(
 
         val zoneResponses: List<ZoneStockResponse> =
             zoneRows.map { zoneRow: ResultRow ->
-                val zoneInternalId: Long = zoneRow[ZonesTable.id] as Long
-                val currentStock: Int = stockMap[zoneInternalId] ?: (zoneRow[ZonesTable.totalCapacity] as Int)
+                val zoneInternalId: Long = zoneRow[ZonesTable.id]
+                val currentStock: Int = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
 
                 ZoneStockResponse(
-                    zoneId = zoneRow[ZonesTable.publicId] as String,
-                    name = zoneRow[ZonesTable.name] as String,
-                    unitPrice = zoneRow[ZonesTable.unitPrice] as Int,
-                    totalCapacity = zoneRow[ZonesTable.totalCapacity] as Int,
+                    zoneId = zoneRow[ZonesTable.publicId],
+                    name = zoneRow[ZonesTable.name],
+                    unitPrice = zoneRow[ZonesTable.unitPrice],
+                    totalCapacity = zoneRow[ZonesTable.totalCapacity],
                     currentStock = currentStock,
                 )
             }
 
         return EventDetailResponse(
-            eventId = eventRow[EventsTable.publicId] as String,
-            name = eventRow[EventsTable.name] as String,
-            description = eventRow[EventsTable.description] as? String,
-            location = eventRow[EventsTable.location] as String,
-            posterUrl = eventRow[EventsTable.posterUrl] as? String,
-            startTime = eventRow[EventsTable.startTime] as Instant,
-            endTime = eventRow[EventsTable.endTime] as Instant,
-            status = EventStatus.valueOf(eventRow[EventsTable.status] as String),
+            eventId = eventRow[EventsTable.publicId],
+            name = eventRow[EventsTable.name],
+            description = eventRow[EventsTable.description],
+            location = eventRow[EventsTable.location],
+            posterUrl = eventRow[EventsTable.posterUrl],
+            startTime = eventRow[EventsTable.startTime],
+            endTime = eventRow[EventsTable.endTime],
+            status = EventStatus.valueOf(eventRow[EventsTable.status]),
             zones = zoneResponses,
         )
     }
@@ -142,7 +141,7 @@ class EventService(
     private fun fetchStockMap(zoneRows: List<ResultRow>): Map<Long, Int> {
         val zoneIds: List<Long> =
             zoneRows.map { row: ResultRow ->
-                row[ZonesTable.id] as Long
+                row[ZonesTable.id]
             }
         val redisKeys: List<String> =
             zoneIds.map { id: Long ->
@@ -169,23 +168,23 @@ class EventService(
     ): EventResponse {
         val minPrice: Int =
             zoneRows.minOfOrNull { zoneRow: ResultRow ->
-                zoneRow[ZonesTable.unitPrice] as Int
+                zoneRow[ZonesTable.unitPrice]
             } ?: 0
         val isSoldOut: Boolean =
             zoneRows.isNotEmpty() &&
                 zoneRows.all { zoneRow: ResultRow ->
-                    val zoneInternalId: Long = zoneRow[ZonesTable.id] as Long
-                    val currentStock: Int = stockMap[zoneInternalId] ?: (zoneRow[ZonesTable.totalCapacity] as Int)
+                    val zoneInternalId: Long = zoneRow[ZonesTable.id]
+                    val currentStock: Int = stockMap[zoneInternalId] ?: zoneRow[ZonesTable.totalCapacity]
                     currentStock <= 0
                 }
 
         return EventResponse(
-            eventId = row[EventsTable.publicId] as String,
-            name = row[EventsTable.name] as String,
-            location = row[EventsTable.location] as String,
-            startTime = row[EventsTable.startTime] as Instant,
-            posterUrl = row[EventsTable.posterUrl] as? String,
-            status = EventStatus.valueOf(row[EventsTable.status] as String),
+            eventId = row[EventsTable.publicId],
+            name = row[EventsTable.name],
+            location = row[EventsTable.location],
+            startTime = row[EventsTable.startTime],
+            posterUrl = row[EventsTable.posterUrl],
+            status = EventStatus.valueOf(row[EventsTable.status]),
             minPrice = minPrice,
             isSoldOut = isSoldOut,
         )

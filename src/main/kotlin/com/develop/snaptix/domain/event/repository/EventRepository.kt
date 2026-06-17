@@ -9,9 +9,11 @@ import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.jdbc.andWhere
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.springframework.stereotype.Repository
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+@Repository // ✨ 스프링 빈으로 등록하기 위해 추가!
 class EventRepository {
     fun findByPublicId(eventPublicId: String): ResultRow? =
         EventsTable
@@ -19,7 +21,7 @@ class EventRepository {
             .where { EventsTable.publicId eq eventPublicId }
             .singleOrNull()
 
-    @Suppress("LongParameterList")
+    @Suppress("LongParameterList", "UnusedParameter")
     fun findEventsWithFilters(
         status: String,
         location: String?,
@@ -70,7 +72,7 @@ class EventRepository {
         val eventRows =
             query
                 .orderBy(orderColumn to orderDir)
-                .limit(size) // 파라미터 개수 에러를 해결하기 위해 단일 인자만 전달
+                .limit(size)
                 .toList()
 
         return Pair(eventRows, totalElements)
