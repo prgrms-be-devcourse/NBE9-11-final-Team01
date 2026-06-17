@@ -1,8 +1,8 @@
 package com.develop.snaptix.domain.event.entity
 
 import org.jetbrains.exposed.v1.core.Table
-import org.jetbrains.exposed.v1.core.javatime.CurrentTimestamp
-import org.jetbrains.exposed.v1.core.javatime.timestamp
+import org.jetbrains.exposed.v1.javatime.CurrentTimestamp
+import org.jetbrains.exposed.v1.javatime.timestamp
 
 object ZonesTable : Table("zones") {
     val id = long("id").autoIncrement()
