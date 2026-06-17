@@ -39,14 +39,12 @@ class EventRepository {
             query = query.andWhere { EventsTable.location like "%$it%" }
         }
         startDate?.let {
-            // LocalDateTime을 DB 컬럼 타입인 Instant로 변환
             query =
                 query.andWhere {
                     EventsTable.startTime greaterEq it.atStartOfDay().toInstant(ZoneOffset.UTC)
                 }
         }
         endDate?.let {
-            // LocalDateTime을 DB 컬럼 타입인 Instant로 변환
             query =
                 query.andWhere {
                     EventsTable.endTime less it.atStartOfDay().toInstant(ZoneOffset.UTC)
@@ -72,7 +70,7 @@ class EventRepository {
         val eventRows =
             query
                 .orderBy(orderColumn to orderDir)
-                .limit(size, (page * size).toLong()) // 네임드 파라미터(offset=) 제거
+                .limit(size) // 파라미터 개수 에러를 해결하기 위해 단일 인자만 전달
                 .toList()
 
         return Pair(eventRows, totalElements)
