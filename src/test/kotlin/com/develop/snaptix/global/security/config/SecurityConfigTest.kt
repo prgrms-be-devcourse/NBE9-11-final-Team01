@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.post
 )
 @Import(
     SecurityConfig::class,
+    PasswordEncoderConfig::class,
     CustomAuthenticationEntryPoint::class,
     CustomAccessDeniedHandler::class,
     SecurityErrorResponseWriter::class,
