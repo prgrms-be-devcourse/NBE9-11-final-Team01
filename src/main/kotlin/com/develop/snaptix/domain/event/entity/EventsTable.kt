@@ -1,8 +1,8 @@
 package com.develop.snaptix.domain.event.entity
 
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
-import org.jetbrains.exposed.sql.javatime.timestamp
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.javatime.CurrentTimestamp
+import org.jetbrains.exposed.v1.core.javatime.timestamp
 
 object EventsTable : Table("events") {
     val id = long("id").autoIncrement()

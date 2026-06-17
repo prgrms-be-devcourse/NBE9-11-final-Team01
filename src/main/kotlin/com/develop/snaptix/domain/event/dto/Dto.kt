@@ -21,6 +21,7 @@ data class PageableMeta(
     val totalPages: Int,
 )
 
+@Suppress("LongParameterList")
 data class EventResponse(
     val eventId: String,
     val name: String,
@@ -32,6 +33,7 @@ data class EventResponse(
     val isSoldOut: Boolean,
 )
 
+@Suppress("LongParameterList")
 data class EventDetailResponse(
     val eventId: String,
     val name: String,
