@@ -44,7 +44,11 @@ class SlackAlertServiceTest {
             AlertContext(
                 trigger = AlertTrigger.CIRCUIT_OPEN,
                 traceId = "trace-1",
-                fields = mapOf("circuitName" to "redis"),
+                fields =
+                    mapOf(
+                        "circuitName" to "redis",
+                        "failureRate" to 100.0,
+                    ),
             ),
         )
 
@@ -54,6 +58,12 @@ class SlackAlertServiceTest {
         assertThat(payloadSlot.captured["text"].toString())
             .contains("[CRITICAL]")
             .contains("Redis 서킷 OPEN")
+        assertThat(payloadSlot.captured.blocks()).hasSize(2)
+        assertThat(payloadSlot.captured.fieldTexts())
+            .anySatisfy { assertThat(it).contains("*Trigger:*").contains("CIRCUIT_OPEN") }
+            .anySatisfy { assertThat(it).contains("*Trace:*").contains("trace-1") }
+            .anySatisfy { assertThat(it).contains("*circuitName:*").contains("redis") }
+            .anySatisfy { assertThat(it).contains("*failureRate:*").contains("100.0") }
     }
 
     @Test
@@ -104,4 +114,15 @@ class SlackAlertServiceTest {
             alertExecutor = directExecutor,
         )
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any?>.fieldTexts(): List<String> {
+        val blocks = blocks()
+        val section = blocks.first { it["type"] == "section" }
+        val fields = section["fields"] as List<Map<String, String>>
+        return fields.map { it.getValue("text") }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun Map<String, Any?>.blocks(): List<Map<String, Any?>> = this["blocks"] as List<Map<String, Any?>>
 }
