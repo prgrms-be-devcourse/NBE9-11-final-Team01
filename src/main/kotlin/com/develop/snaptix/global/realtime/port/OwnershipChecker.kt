@@ -9,7 +9,7 @@ import com.develop.snaptix.global.realtime.SseChannelKey
  * `global.realtime` 패키지는 이 인터페이스만 알고, 구체 검증 규칙(reservations.user_id,
  * order:owner:{orderId} 등)은 알지 못한다.
  */
-interface OwnershipChecker {
+fun interface OwnershipChecker {
     fun check(
         key: SseChannelKey,
         userId: String,
