@@ -33,6 +33,7 @@ class RedisCircuitBreakerEventListenerTest {
         assertThat(alertContextSlot.captured.trigger).isEqualTo(AlertTrigger.CIRCUIT_OPEN)
         assertThat(alertContextSlot.captured.fields["circuitName"]).isEqualTo("redis")
         assertThat(alertContextSlot.captured.fields).containsKey("failureRate")
+        assertThat(alertContextSlot.captured.fields["from"]).isEqualTo("CLOSED")
         assertThat(alertContextSlot.captured.fields["to"]).isEqualTo("OPEN")
     }
 
@@ -57,6 +58,7 @@ class RedisCircuitBreakerEventListenerTest {
         every { alertService.notify(any()) } returns Unit
         val registry = CircuitBreakerRegistry.ofDefaults()
         val circuitBreaker = registry.circuitBreaker("redis", CircuitBreakerConfig.custom().build())
+        val alertContexts = mutableListOf<AlertContext>()
 
         RedisCircuitBreakerEventListener(
             circuitBreakerRegistry = registry,
@@ -67,6 +69,10 @@ class RedisCircuitBreakerEventListenerTest {
         circuitBreaker.transitionToHalfOpenState()
         circuitBreaker.transitionToOpenState()
 
-        verify(exactly = 2) { alertService.notify(any()) }
+        verify(exactly = 2) { alertService.notify(capture(alertContexts)) }
+        assertThat(alertContexts[0].fields["from"]).isEqualTo("CLOSED")
+        assertThat(alertContexts[0].fields["to"]).isEqualTo("OPEN")
+        assertThat(alertContexts[1].fields["from"]).isEqualTo("HALF_OPEN")
+        assertThat(alertContexts[1].fields["to"]).isEqualTo("OPEN")
     }
 }
