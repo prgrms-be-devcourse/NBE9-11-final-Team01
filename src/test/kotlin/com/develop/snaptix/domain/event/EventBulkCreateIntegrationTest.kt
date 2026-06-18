@@ -110,6 +110,8 @@ class EventBulkCreateIntegrationTest(
                 status { isForbidden() }
                 jsonPath("$.code") { value(ErrorCode.ACCESS_DENIED.code) }
             }
+
+        assertEventAndZoneTablesAreEmpty()
     }
 
     @Test
@@ -123,6 +125,8 @@ class EventBulkCreateIntegrationTest(
                 status { isBadRequest() }
                 jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
             }
+
+        assertEventAndZoneTablesAreEmpty()
     }
 
     @Test
@@ -140,6 +144,8 @@ class EventBulkCreateIntegrationTest(
                 status { isBadRequest() }
                 jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
             }
+
+        assertEventAndZoneTablesAreEmpty()
     }
 
     @Test
@@ -156,6 +162,8 @@ class EventBulkCreateIntegrationTest(
                 status { isBadRequest() }
                 jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
             }
+
+        assertEventAndZoneTablesAreEmpty()
     }
 
     private fun createRequest(
@@ -186,4 +194,22 @@ class EventBulkCreateIntegrationTest(
           ]
         }
         """.trimIndent()
+
+    private fun assertEventAndZoneTablesAreEmpty() {
+        val counts =
+            transaction {
+                EventsAndZonesCount(
+                    events = EventsTable.selectAll().count(),
+                    zones = ZonesTable.selectAll().count(),
+                )
+            }
+
+        assertThat(counts.events).isZero()
+        assertThat(counts.zones).isZero()
+    }
+
+    private data class EventsAndZonesCount(
+        val events: Long,
+        val zones: Long,
+    )
 }
