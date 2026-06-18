@@ -37,6 +37,9 @@ class SecurityConfig {
                 sessionCreationPolicy = SessionCreationPolicy.STATELESS
             }
             authorizeHttpRequests {
+                authorize("/swagger-ui.html", permitAll)
+                authorize("/swagger-ui/**", permitAll)
+                authorize("/v3/api-docs/**", permitAll)
                 authorize("/api/v1/auth/signup", permitAll)
                 authorize("/api/v1/auth/login", permitAll)
                 authorize("/actuator/health", permitAll)

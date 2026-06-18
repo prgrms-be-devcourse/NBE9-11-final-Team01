@@ -8,6 +8,8 @@ private const val STAFF_RESPONSE = "staff"
 private const val EVENT_RESPONSE = "event"
 private const val EVENT_ZONE_RESPONSE = "event-zone"
 private const val HEALTH_RESPONSE = "health"
+private const val SWAGGER_RESPONSE = "swagger"
+private const val API_DOCS_RESPONSE = "api-docs"
 
 @RestController
 class SecurityTestController {
@@ -25,4 +27,10 @@ class SecurityTestController {
 
     @GetMapping("/actuator/health")
     fun healthTest(): String = HEALTH_RESPONSE
+
+    @GetMapping("/swagger-ui/index.html")
+    fun swaggerTest(): String = SWAGGER_RESPONSE
+
+    @GetMapping("/v3/api-docs")
+    fun apiDocsTest(): String = API_DOCS_RESPONSE
 }
