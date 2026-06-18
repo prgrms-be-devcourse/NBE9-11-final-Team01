@@ -15,6 +15,6 @@ import com.develop.snaptix.global.realtime.SseEvent
  *
  * @return 재구성할 이벤트, 없으면 [null] (구독만 유지하고 대기)
  */
-interface StateReconstructor {
+fun interface StateReconstructor {
     fun reconstruct(key: SseChannelKey): SseEvent?
 }
