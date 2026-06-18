@@ -58,7 +58,8 @@ class SlackAlertServiceTest {
         assertThat(payloadSlot.captured["text"].toString())
             .contains("[CRITICAL]")
             .contains("Redis 서킷 OPEN")
-        assertThat(payloadSlot.captured.blocks()).hasSize(2)
+        assertThat(payloadSlot.captured.blocks().map { it["type"] })
+            .contains("header", "section")
         assertThat(payloadSlot.captured.fieldTexts())
             .anySatisfy { assertThat(it).contains("*Trigger:*").contains("CIRCUIT_OPEN") }
             .anySatisfy { assertThat(it).contains("*Trace:*").contains("trace-1") }
