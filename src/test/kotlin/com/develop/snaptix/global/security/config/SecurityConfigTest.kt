@@ -98,6 +98,21 @@ class SecurityConfigTest(
     }
 
     @Test
+    fun `Swagger endpoint 는 인증 없이 접근 가능`() {
+        mockMvc
+            .get("/swagger-ui/index.html")
+            .andExpect {
+                status { isOk() }
+            }
+
+        mockMvc
+            .get("/v3/api-docs")
+            .andExpect {
+                status { isOk() }
+            }
+    }
+
+    @Test
     fun `GET 이외 이벤트 endpoint 는 인증 없이 접근 불가`() {
         mockMvc
             .post("/api/v1/events")
