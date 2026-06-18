@@ -4,15 +4,14 @@ on:
   push:
     branches: [ci/pping/cicd-blue-green-deploy]
   pull_request:
-    branches: [ main ]
-
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
+# AWS_REGION은 secrets라 최상위 env에서 못 읽음 → job 레벨 env로 주입(아래).
 env:
-  AWS_REGION: ap-northeast-2
   TEAM_TAG: devcos-team01
   ECR_REPO: team01-app
   HEALTH_PATH: /actuator/health
@@ -20,9 +19,12 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}   # GitHub Secret에서 주입(job 레벨은 secrets 접근 가능)
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Inject application-secret.yml
         env:
           APPLICATION_SECRET: ${{ secrets.APPLICATION_SECRET }}
@@ -114,11 +116,15 @@ jobs:
           done
           echo "health check failed on \$IDLE_PORT"; exit 1
           EOF
+          # 스크립트에 따옴표·쉼표·줄바꿈이 있어 shorthand(commands=...)는 파싱 실패함.
+          # jq로 올바르게 이스케이프한 JSON 파일을 만들어 --parameters file:// 로 전달.
+          printf '%s' "$SCRIPT" > /tmp/ssm_deploy.sh
+          jq -n --rawfile c /tmp/ssm_deploy.sh '{commands:[$c]}' > /tmp/ssm_deploy.json
           CMD_ID="$(aws ssm send-command \
             --instance-ids "${{ steps.ids.outputs.app }}" \
             --document-name AWS-RunShellScript \
             --comment "deploy ${IMAGE_REF}" \
-            --parameters commands="$SCRIPT" \
+            --parameters file:///tmp/ssm_deploy.json \
             --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}" || true
           OUT="$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}")"
@@ -141,10 +147,12 @@ jobs:
           echo "switched: \$NEWUP=100 \$OLD=0"
           echo "show stat" | sudo socat stdio "\$SOCK" | grep app_back || true
           EOF
+          printf '%s' "$SCRIPT" > /tmp/ssm_switch.sh
+          jq -n --rawfile c /tmp/ssm_switch.sh '{commands:[$c]}' > /tmp/ssm_switch.json
           CMD_ID="$(aws ssm send-command \
             --instance-ids "${{ steps.ids.outputs.edge }}" \
             --document-name AWS-RunShellScript \
-            --parameters commands="$SCRIPT" \
+            --parameters file:///tmp/ssm_switch.json \
             --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.edge }}" || true
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.edge }}" \
@@ -163,10 +171,12 @@ jobs:
           docker stop "\$OLDNAME" 2>/dev/null || true
           echo "stopped \$OLDNAME"
           EOF
+          printf '%s' "$SCRIPT" > /tmp/ssm_stop.sh
+          jq -n --rawfile c /tmp/ssm_stop.sh '{commands:[$c]}' > /tmp/ssm_stop.json
           CMD_ID="$(aws ssm send-command \
             --instance-ids "${{ steps.ids.outputs.app }}" \
             --document-name AWS-RunShellScript \
-            --parameters commands="$SCRIPT" \
+            --parameters file:///tmp/ssm_stop.json \
             --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}" || true
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}" \
