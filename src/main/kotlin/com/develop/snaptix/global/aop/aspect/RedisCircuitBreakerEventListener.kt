@@ -18,8 +18,9 @@ class RedisCircuitBreakerEventListener(
 
     @PostConstruct
     fun registerListeners() {
-        circuitBreakerRegistry
-            .circuitBreaker("redis")
+        val circuitBreaker = circuitBreakerRegistry.circuitBreaker("redis")
+
+        circuitBreaker
             .eventPublisher
             .onStateTransition { event ->
                 val from = event.stateTransition.fromState.name
@@ -42,6 +43,7 @@ class RedisCircuitBreakerEventListener(
                             fields =
                                 mapOf(
                                     "circuitName" to "redis",
+                                    "failureRate" to circuitBreaker.metrics.failureRate,
                                     "from" to from,
                                     "to" to to,
                                 ),

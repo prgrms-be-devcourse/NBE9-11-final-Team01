@@ -32,6 +32,7 @@ class RedisCircuitBreakerEventListenerTest {
         verify(exactly = 1) { alertService.notify(capture(alertContextSlot)) }
         assertThat(alertContextSlot.captured.trigger).isEqualTo(AlertTrigger.CIRCUIT_OPEN)
         assertThat(alertContextSlot.captured.fields["circuitName"]).isEqualTo("redis")
+        assertThat(alertContextSlot.captured.fields).containsKey("failureRate")
         assertThat(alertContextSlot.captured.fields["to"]).isEqualTo("OPEN")
     }
 
