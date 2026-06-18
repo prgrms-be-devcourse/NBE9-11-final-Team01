@@ -3,6 +3,7 @@ package com.develop.snaptix.global.alert.service
 import com.develop.snaptix.global.alert.config.AlertProperties
 import com.develop.snaptix.global.alert.model.AlertContext
 import org.springframework.stereotype.Component
+import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -13,12 +14,13 @@ private const val CLEANUP_INTERVAL_SECONDS = 60L
 @Component
 class AlertThrottler(
     private val alertProperties: AlertProperties,
+    private val clock: Clock,
 ) {
     private val lastSentAtByKey = ConcurrentHashMap<String, Instant>()
     private val lastCleanupEpochSeconds = AtomicLong(0)
 
     fun tryAcquire(context: AlertContext): Boolean {
-        val now = Instant.now()
+        val now = Instant.now(clock)
         val key = context.throttleKey()
         val windowSeconds = alertProperties.throttle.windowSeconds
         val acquired = AtomicBoolean(false)
@@ -56,6 +58,8 @@ class AlertThrottler(
             !lastSentAt.plusSeconds(windowSeconds).isAfter(now)
         }
     }
+
+    internal fun activeThrottleKeyCount(): Int = lastSentAtByKey.size
 
     private fun AlertContext.throttleKey(): String =
         listOfNotNull(

@@ -11,6 +11,7 @@ import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Clock
 import java.util.concurrent.Executor
 
 private const val WEBHOOK_URL = "https://hooks.slack.test/services/test"
@@ -98,7 +99,7 @@ class SlackAlertServiceTest {
 
         return SlackAlertService(
             slackWebhookClient = slackWebhookClient,
-            alertThrottler = AlertThrottler(properties),
+            alertThrottler = AlertThrottler(properties, Clock.systemUTC()),
             alertProperties = properties,
             alertExecutor = directExecutor,
         )
