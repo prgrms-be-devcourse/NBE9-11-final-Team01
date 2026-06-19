@@ -1,4 +1,4 @@
-package global.exception
+package com.develop.snaptix.global.exception
 
 import org.springframework.http.HttpStatus
 
@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus
  *   throw BusinessException(ErrorCode.TICKET_NOT_FOUND)
  *   throw BusinessException(ErrorCode.VALIDATION_FAILED, "티켓 코드는 UUID 형식이어야 합니다.")
  */
-class BusinessException(
+open class BusinessException(
     internal val errorCode: ErrorCode,
     customMessage: String? = null,
 ) : RuntimeException(customMessage) {

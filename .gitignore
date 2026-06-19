@@ -40,4 +40,5 @@ out/
 .kotlin
 
 ### Secret ###
+src/main/resources/application-secret.yml
 src/main/resources/application-secret.yaml
