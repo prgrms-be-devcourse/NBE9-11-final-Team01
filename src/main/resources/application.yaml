@@ -2,14 +2,10 @@ spring:
   application:
     name: snaptix
 
-  profiles:
-    active: dev
-    include: secret
-
   datasource:
     url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul
-    username: ${SPRING_DATASOURCE_USERNAME:snaptix}
-    password: ${SPRING_DATASOURCE_PASSWORD:snaptix1234}
+    username: snaptix
+    password: snaptix1234
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   exposed:
@@ -17,34 +13,8 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      host: localhost
+      port: 6379
 
 server:
   port: 8080
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      probes:
-        enabled: true
-      show-details: never
-
-custom:
-  dev:
-    domain: localhost
-    backUrl: "http://${custom.dev.domain}:${server.port}"
-    frontUrl: "http://${custom.dev.domain}:3000"
-  prod:
-    domain: edge.example-test-domain11.shop
-    backUrl: "https://${custom.prod.domain}"
-    frontUrl: "https://<프런트-호스팅-주소>"     # CORS 허용 origin
-  site:                                          # 기본 dev, prod 프로파일에서 override
-    domain: "${custom.dev.domain}"
-    backUrl: "${custom.dev.backUrl}"
-    frontUrl: "${custom.dev.frontUrl}"
