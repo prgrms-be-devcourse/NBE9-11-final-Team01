@@ -64,12 +64,7 @@ class InMemorySseConnectionManager(
             subscriber.subscribe(key)
         }
 
-        emitter.onCompletion { cleanup(key, emitter) }
-        emitter.onTimeout {
-            runCatching { emitter.complete() }
-            cleanup(key, emitter)
-        }
-        emitter.onError { cleanup(key, emitter) }
+        registerLifecycle(key, emitter)
 
         // Pub/Sub 비영속 대비: 연결 직후 현재 상태를 재구성해 1회 전송
         stateReconstructors[key.resource]?.reconstruct(key)?.let { dispatch(key, it) }
@@ -122,6 +117,22 @@ class InMemorySseConnectionManager(
                 cleanup(key, emitter)
             }
         }
+    }
+
+    /**
+     * 모든 종료 경로(정상 완료·타임아웃·에러)에서 누수 없이 정리되도록 콜백을 등록한다.
+     * onTimeout 은 Spring 이 자동 complete 하지 않으므로 직접 complete 후 정리한다.
+     */
+    private fun registerLifecycle(
+        key: SseChannelKey,
+        emitter: SseEmitter,
+    ) {
+        emitter.onCompletion { cleanup(key, emitter) }
+        emitter.onTimeout {
+            runCatching { emitter.complete() }
+            cleanup(key, emitter)
+        }
+        emitter.onError { cleanup(key, emitter) }
     }
 
     /** 등록된 Emitter와 동일할 때만 제거(identity 가드) + 구독 해제. 멱등. */
