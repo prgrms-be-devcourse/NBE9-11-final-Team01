@@ -4,11 +4,14 @@ import com.develop.snaptix.domain.event.dto.EventBulkCreateRequest
 import com.develop.snaptix.domain.event.dto.EventBulkCreateResponse
 import com.develop.snaptix.domain.event.dto.ZoneCreateResult
 import com.develop.snaptix.domain.event.entity.EventStatus
+import com.develop.snaptix.domain.event.repository.EventInsertResult
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -19,6 +22,7 @@ private val ALLOWED_INITIAL_STATUSES = setOf(EventStatus.PENDING, EventStatus.ON
 class EventService(
     private val eventRepository: EventRepository,
     private val zoneRepository: ZoneRepository,
+    private val eventRedisInitializer: EventRedisInitializer,
 ) {
     fun createEventWithZones(request: EventBulkCreateRequest): EventBulkCreateResponse {
         validateCreateRequest(request)
@@ -36,22 +40,27 @@ class EventService(
                     status = request.initialStatus,
                 )
 
-            val registeredZones =
+            val zones =
                 request.zones.map { zoneRequest ->
-                    val zone =
-                        zoneRepository.insertZone(
-                            publicId = UUID.randomUUID().toString(),
-                            eventId = event.id,
-                            name = zoneRequest.name,
-                            unitPrice = zoneRequest.unitPrice,
-                            totalCapacity = zoneRequest.totalCapacity,
-                        )
+                    zoneRepository.insertZone(
+                        publicId = UUID.randomUUID().toString(),
+                        eventId = event.id,
+                        name = zoneRequest.name,
+                        unitPrice = zoneRequest.unitPrice,
+                        totalCapacity = zoneRequest.totalCapacity,
+                    )
+                }
 
+            initializeRedis(event, request, zones)
+
+            val registeredZones =
+                zones.map { zone ->
                     ZoneCreateResult(
                         zoneId = zone.publicId,
                         name = zone.name,
                         unitPrice = zone.unitPrice,
                         totalCapacity = zone.totalCapacity,
+                        redisStockKey = eventRedisInitializer.stockKey(zone.id),
                     )
                 }
 
@@ -62,6 +71,18 @@ class EventService(
                 registeredZones = registeredZones,
                 message = "이벤트 및 ${registeredZones.size}개 구역 등록이 완료되었습니다.",
             )
+        }
+    }
+
+    private fun initializeRedis(
+        event: EventInsertResult,
+        request: EventBulkCreateRequest,
+        zones: List<ZoneInsertResult>,
+    ) {
+        try {
+            eventRedisInitializer.initialize(event, request, zones)
+        } catch (exception: DataAccessException) {
+            throw BusinessException(ErrorCode.EVENT_REDIS_INITIALIZATION_FAILED, cause = exception)
         }
     }
 
