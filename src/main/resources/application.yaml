@@ -51,8 +51,3 @@ alert:
     mention-on-critical: false
   throttle:
     window-seconds: 300
-
-realtime:
-  sse:
-    timeout: 8m
-    heartbeat-interval: 30s
