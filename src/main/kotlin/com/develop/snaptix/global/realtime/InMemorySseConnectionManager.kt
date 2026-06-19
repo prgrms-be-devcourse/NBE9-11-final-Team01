@@ -14,10 +14,10 @@ import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * [SseConnectionManager]의 실제 코어 구현 (PR-02).
+ * [SseConnectionManager]의 실제 코어 구현 (PR-02, PR-03에서 수명/heartbeat 반영).
  *
  * 인메모리 연결 레지스트리와 connect/dispatch/close/activeConnections 본체를 담당한다.
- * 수명·heartbeat(PR-03), 정리 콜백 분리(PR-04), Redis 구독(PR-05), 비동기 전송(PR-06),
+ * 정리 콜백 분리(PR-04), Redis 구독(PR-05), 비동기 전송(PR-06),
  * 로깅/메트릭(PR-08)은 후속 PR에서 끼운다.
  *
  * ## 레지스트리가 왜 인스턴스 로컬인가 (Redis에 두지 않는 이유)
@@ -29,25 +29,18 @@ import java.util.concurrent.ConcurrentHashMap
  *  - 다른 인스턴스는 해당 채널 미구독(또는 [dispatch] no-op)
  * 인스턴스 장애로 연결이 끊기면 클라이언트 재연결 + [StateReconstructor]로 상태 재구성한다.
  * (ERD Redis Key 명세: `sse:order:{orderId}` Pub/Sub / Story 4.2)
- *
- * ## 다중 도메인 해결
- * 채널 키 `sse:{resource}:{id}`의 `resource`로 도메인별 어댑터를 선택한다. 어댑터는 빈 이름을
- * resource 로 등록한다(예: `@Component("order")`). Spring이 `Map<String, OwnershipChecker>`를
- * 빈 이름 → 빈으로 주입하므로 `[key.resource]`로 조회한다.
- *
- * ## 기동 안전성
- * 생성자 기본값 덕분에 어댑터·구독자 빈이 아직 없어도(PR-05·07 머지 전) 기동된다.
- * [subscriber]는 빈이 있으면 주입, 없으면 [NoOpSseChannelSubscriber]를 사용한다.
  */
 @Component
 class InMemorySseConnectionManager(
     private val ownershipCheckers: Map<String, OwnershipChecker> = emptyMap(),
     private val stateReconstructors: Map<String, StateReconstructor> = emptyMap(),
     private val subscriber: SseChannelSubscriber = NoOpSseChannelSubscriber(),
+    private val properties: RealtimeProperties = RealtimeProperties(),
 ) : SseConnectionManager {
     private val logger = KotlinLogging.logger {}
 
-    private val registry = ConcurrentHashMap<String, SseEmitter>()
+    // 키를 SseChannelKey(data class)로 직접 사용 → heartbeat 순회 시 채널 키로 구독 해제 가능
+    private val registry = ConcurrentHashMap<SseChannelKey, SseEmitter>()
 
     override fun connect(
         key: SseChannelKey,
@@ -63,20 +56,15 @@ class InMemorySseConnectionManager(
             OwnershipResult.OWNED -> Unit
         }
 
-        val emitter = SseEmitter(DEFAULT_TIMEOUT_MS)
-        val previous = registry.put(key.registryKey(), emitter)
+        val emitter = SseEmitter(properties.timeoutMillis()) // 타임아웃 봉투(설정 외부화, PR-03)
+        val previous = registry.put(key, emitter)
         if (previous != null) {
             runCatching { previous.complete() } // 재연결: 기존 연결 교체 (구독은 유지)
         } else {
             subscriber.subscribe(key)
         }
 
-        emitter.onCompletion { cleanup(key, emitter) }
-        emitter.onTimeout {
-            runCatching { emitter.complete() }
-            cleanup(key, emitter)
-        }
-        emitter.onError { cleanup(key, emitter) }
+        registerLifecycle(key, emitter)
 
         // Pub/Sub 비영속 대비: 연결 직후 현재 상태를 재구성해 1회 전송
         stateReconstructors[key.resource]?.reconstruct(key)?.let { dispatch(key, it) }
@@ -87,7 +75,7 @@ class InMemorySseConnectionManager(
         key: SseChannelKey,
         event: SseEvent,
     ) {
-        val emitter = registry[key.registryKey()] ?: return // 이 인스턴스에 연결 없음 → no-op
+        val emitter = registry[key] ?: return // 이 인스턴스에 연결 없음 → no-op
 
         // NOTE: 본 PR은 동기 전송. PR-06에서 전용 TaskExecutor 비동기 전송으로 교체.
         try {
@@ -106,25 +94,54 @@ class InMemorySseConnectionManager(
     }
 
     override fun close(key: SseChannelKey) {
-        val emitter = registry.remove(key.registryKey()) ?: return
+        val emitter = registry.remove(key) ?: return
         runCatching { emitter.complete() }
         subscriber.unsubscribe(key)
     }
 
     override fun activeConnections(): Int = registry.size
 
+    /**
+     * 활성 연결에 주석 ping 을 보내 죽은 연결을 조기 감지·정리한다. (PR-03 HeartbeatScheduler 가 주기 호출)
+     * ConcurrentHashMap 순회는 weakly-consistent 라 동시 등록/제거와 안전하다.
+     */
+    fun heartbeat() {
+        registry.forEach { (key, emitter) ->
+            try {
+                emitter.send(SseEmitter.event().comment("ping"))
+            } catch (ex: IOException) {
+                logger.debug(ex) { "heartbeat 실패 → 정리: ${key.registryKey()}" }
+                cleanup(key, emitter)
+            } catch (ex: IllegalStateException) {
+                logger.debug(ex) { "heartbeat 대상이 이미 종료됨 → 정리: ${key.registryKey()}" }
+                cleanup(key, emitter)
+            }
+        }
+    }
+
+    /**
+     * 모든 종료 경로(정상 완료·타임아웃·에러)에서 누수 없이 정리되도록 콜백을 등록한다.
+     * onTimeout 은 Spring 이 자동 complete 하지 않으므로 직접 complete 후 정리한다.
+     */
+    private fun registerLifecycle(
+        key: SseChannelKey,
+        emitter: SseEmitter,
+    ) {
+        emitter.onCompletion { cleanup(key, emitter) }
+        emitter.onTimeout {
+            runCatching { emitter.complete() }
+            cleanup(key, emitter)
+        }
+        emitter.onError { cleanup(key, emitter) }
+    }
+
     /** 등록된 Emitter와 동일할 때만 제거(identity 가드) + 구독 해제. 멱등. */
     private fun cleanup(
         key: SseChannelKey,
         emitter: SseEmitter,
     ) {
-        if (registry.remove(key.registryKey(), emitter)) {
+        if (registry.remove(key, emitter)) {
             subscriber.unsubscribe(key)
         }
-    }
-
-    companion object {
-        // 타임아웃 봉투 기본값. PR-03에서 RealtimeProperties 로 외부화 예정. (작업 명세서 D2)
-        const val DEFAULT_TIMEOUT_MS: Long = 8 * 60 * 1000
     }
 }

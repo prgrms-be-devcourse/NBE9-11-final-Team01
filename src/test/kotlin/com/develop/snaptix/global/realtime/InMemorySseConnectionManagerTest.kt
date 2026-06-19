@@ -86,4 +86,12 @@ class InMemorySseConnectionManagerTest {
         manager.dispatch(key, SseEvent.ongoing("READY_TO_PAY", "x")) // 예외 없이 통과
         assertThat(manager.activeConnections()).isEqualTo(0)
     }
+
+    @Test
+    fun `heartbeat 는 활성 연결을 유지한다`() {
+        val manager = sut(OwnershipResult.OWNED)
+        manager.connect(key, userId)
+        manager.heartbeat() // 신선한 연결엔 ping 정상 전송
+        assertThat(manager.activeConnections()).isEqualTo(1)
+    }
 }

@@ -12,7 +12,8 @@ import org.springframework.http.HttpStatus
 open class BusinessException(
     internal val errorCode: ErrorCode,
     customMessage: String? = null,
-) : RuntimeException(customMessage) {
+    cause: Throwable? = null,
+) : RuntimeException(customMessage, cause) {
     constructor(errorCode: ErrorCode) : this(errorCode, null)
 
     val httpStatus: HttpStatus
