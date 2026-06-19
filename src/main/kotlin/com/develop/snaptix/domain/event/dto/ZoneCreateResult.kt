@@ -5,4 +5,5 @@ data class ZoneCreateResult(
     val name: String,
     val unitPrice: Int,
     val totalCapacity: Int,
+    val redisStockKey: String,
 )

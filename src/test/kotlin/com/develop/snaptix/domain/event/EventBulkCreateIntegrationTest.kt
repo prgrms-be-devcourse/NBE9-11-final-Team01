@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -28,6 +29,7 @@ import org.testcontainers.mysql.MySQLContainer
 @Testcontainers
 class EventBulkCreateIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
+    @Autowired private val redisTemplate: StringRedisTemplate,
 ) {
     companion object {
         @Container
@@ -64,6 +66,9 @@ class EventBulkCreateIntegrationTest(
             ZonesTable.deleteAll()
             EventsTable.deleteAll()
         }
+        deleteRedisKeys("ZONE:*:stock")
+        deleteRedisKeys("event:info:*")
+        deleteRedisKeys("queue:order:*")
     }
 
     @Test
@@ -80,23 +85,35 @@ class EventBulkCreateIntegrationTest(
                 jsonPath("$.status") { value("PENDING") }
                 jsonPath("$.registeredZones.length()") { value(2) }
                 jsonPath("$.registeredZones[0].zoneId") { exists() }
+                jsonPath("$.registeredZones[0].redisStockKey") { exists() }
                 jsonPath("$.message") { value("이벤트 및 2개 구역 등록이 완료되었습니다.") }
             }
 
-        val eventCount =
+        val created =
             transaction {
-                EventsTable.selectAll().count()
-            }
-        assertThat(eventCount).isEqualTo(1)
+                val eventRow = EventsTable.selectAll().single()
 
-        val zones =
-            transaction {
-                ZonesTable
-                    .selectAll()
-                    .map { it[ZonesTable.publicId] }
+                CreatedEventAndZones(
+                    eventId = eventRow[EventsTable.id],
+                    eventPublicId = eventRow[EventsTable.publicId],
+                    eventCount = EventsTable.selectAll().count(),
+                    zones =
+                        ZonesTable
+                            .selectAll()
+                            .map {
+                                CreatedZone(
+                                    id = it[ZonesTable.id],
+                                    publicId = it[ZonesTable.publicId],
+                                    totalCapacity = it[ZonesTable.totalCapacity],
+                                )
+                            },
+                )
             }
-        assertThat(zones).hasSize(2)
-        assertThat(zones).allSatisfy { assertThat(it).isNotBlank() }
+
+        assertThat(created.eventCount).isEqualTo(1)
+        assertThat(created.zones).hasSize(2)
+        assertThat(created.zones.map { it.publicId }).allSatisfy { assertThat(it).isNotBlank() }
+        assertRedisInitialized(created)
     }
 
     @Test
@@ -208,8 +225,38 @@ class EventBulkCreateIntegrationTest(
         assertThat(counts.zones).isZero()
     }
 
+    private fun assertRedisInitialized(created: CreatedEventAndZones) {
+        created.zones.forEach { zone ->
+            assertThat(redisTemplate.opsForValue().get("ZONE:${zone.id}:stock"))
+                .isEqualTo(zone.totalCapacity.toString())
+        }
+
+        assertThat(redisTemplate.opsForHash<String, String>().entries("event:info:${created.eventPublicId}"))
+            .containsEntry("name", "2027 SnapTix Concert")
+            .containsEntry("status", "PENDING")
+
+        assertThat(redisTemplate.hasKey("queue:order:${created.eventPublicId}")).isTrue()
+    }
+
+    private fun deleteRedisKeys(pattern: String) {
+        redisTemplate.keys(pattern).takeIf { it.isNotEmpty() }?.let(redisTemplate::delete)
+    }
+
     private data class EventsAndZonesCount(
         val events: Long,
         val zones: Long,
+    )
+
+    private data class CreatedEventAndZones(
+        val eventId: Long,
+        val eventPublicId: String,
+        val eventCount: Long,
+        val zones: List<CreatedZone>,
+    )
+
+    private data class CreatedZone(
+        val id: Long,
+        val publicId: String,
+        val totalCapacity: Int,
     )
 }
