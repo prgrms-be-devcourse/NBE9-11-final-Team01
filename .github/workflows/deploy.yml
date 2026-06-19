@@ -2,7 +2,7 @@ name: deploy
 
 on:
   push:
-    branches: [ci/pping/cicd-blue-green-deploy]
+    branches: [ci/pping/cicd-blue-green-deploy] # test용
   pull_request:
     branches: [main]
   workflow_dispatch: {}
@@ -139,13 +139,13 @@ jobs:
           COLOR="${{ steps.deploy.outputs.color }}"   # 새로 띄운 쪽
           read -r -d '' SCRIPT <<EOF || true
           set -euo pipefail
-          SOCK=/dockerProjects/haproxy/run/admin.sock
+          ADMIN="tcp:127.0.0.1:9999"   # HAProxy runtime API(TCP, 호스트 loopback에만 노출)
           command -v socat >/dev/null || (sudo dnf install -y socat || sudo yum install -y socat)
           if [ "${COLOR}" = "green" ]; then NEWUP=green; OLD=blue; else NEWUP=blue; OLD=green; fi
-          echo "set weight app_back/\$NEWUP 100" | sudo socat stdio "\$SOCK"
-          echo "set weight app_back/\$OLD 0"     | sudo socat stdio "\$SOCK"
+          echo "set weight app_back/\$NEWUP 100" | socat - "\$ADMIN"
+          echo "set weight app_back/\$OLD 0"     | socat - "\$ADMIN"
           echo "switched: \$NEWUP=100 \$OLD=0"
-          echo "show stat" | sudo socat stdio "\$SOCK" | grep app_back || true
+          echo "show stat" | socat - "\$ADMIN" | grep app_back || true
           EOF
           printf '%s' "$SCRIPT" > /tmp/ssm_switch.sh
           jq -n --rawfile c /tmp/ssm_switch.sh '{commands:[$c]}' > /tmp/ssm_switch.json
@@ -180,4 +180,4 @@ jobs:
             --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}" || true
           aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "${{ steps.ids.outputs.app }}" \
-            --query 'Status' --output text
+            --query 'S
