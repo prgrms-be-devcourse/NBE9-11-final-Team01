@@ -87,7 +87,9 @@ class EventBulkCreateIntegrationTest(
                     jsonPath("$.status") { value("PENDING") }
                     jsonPath("$.registeredZones.length()") { value(2) }
                     jsonPath("$.registeredZones[0].zoneId") { exists() }
+                    jsonPath("$.registeredZones[0].name") { value("VIP") }
                     jsonPath("$.registeredZones[0].redisStockKey") { exists() }
+                    jsonPath("$.registeredZones[1].name") { value("A") }
                     jsonPath("$.message") { value("이벤트 및 2개 구역 등록이 완료되었습니다.") }
                 }.andReturn()
 
@@ -234,6 +236,7 @@ class EventBulkCreateIntegrationTest(
         created.zones.forEach { zone ->
             val stockKey = "ZONE:${zone.id}:stock"
 
+            assertThat(result.response.contentAsString).contains("\"zoneId\":\"${zone.publicId}\"")
             assertThat(result.response.contentAsString).contains("\"redisStockKey\":\"$stockKey\"")
             assertThat(redisTemplate.opsForValue().get(stockKey))
                 .isEqualTo(zone.totalCapacity.toString())

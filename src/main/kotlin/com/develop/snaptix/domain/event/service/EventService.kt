@@ -6,6 +6,7 @@ import com.develop.snaptix.domain.event.dto.ZoneCreateResult
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.repository.EventInsertResult
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.domain.zone.repository.ZoneCreateCommand
 import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
@@ -40,16 +41,16 @@ class EventService(
                     status = request.initialStatus,
                 )
 
-            val zones =
+            val zoneCommands =
                 request.zones.map { zoneRequest ->
-                    zoneRepository.insertZone(
+                    ZoneCreateCommand(
                         publicId = UUID.randomUUID().toString(),
-                        eventId = event.id,
                         name = zoneRequest.name,
                         unitPrice = zoneRequest.unitPrice,
                         totalCapacity = zoneRequest.totalCapacity,
                     )
                 }
+            val zones = zoneRepository.insertZones(event.id, zoneCommands)
 
             initializeRedis(event, request, zones)
 
