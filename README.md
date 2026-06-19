@@ -106,4 +106,3 @@ PR 생성 시 GitHub Actions에서 ktlint와 detekt가 자동으로 실행됩니
 ```bash
 ./gradlew ktlintCheck detekt
 ```
-test02
