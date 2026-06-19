@@ -76,8 +76,8 @@ class EventBulkCreateRedisFailureIntegrationTest(
                 contentType = MediaType.APPLICATION_JSON
                 content = createRequest()
             }.andExpect {
-                status { isInternalServerError() }
-                jsonPath("$.code") { value(ErrorCode.EVENT_CREATION_FAILED.code) }
+                status { isServiceUnavailable() }
+                jsonPath("$.code") { value(ErrorCode.EVENT_REDIS_INITIALIZATION_FAILED.code) }
             }
 
         val counts =

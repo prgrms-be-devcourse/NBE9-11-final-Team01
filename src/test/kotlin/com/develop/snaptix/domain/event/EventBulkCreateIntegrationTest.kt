@@ -242,6 +242,8 @@ class EventBulkCreateIntegrationTest(
         val eventInfoKey = "event:info:${created.eventPublicId}"
         assertThat(redisTemplate.opsForHash<String, String>().entries(eventInfoKey))
             .containsEntry("name", "2027 SnapTix Concert")
+            .containsEntry("startTime", "2027-12-25T10:00:00Z")
+            .containsEntry("endTime", "2027-12-25T13:00:00Z")
             .containsEntry("status", "PENDING")
         assertThat(redisTemplate.getExpire(eventInfoKey))
             .isBetween(1L, 3600L)

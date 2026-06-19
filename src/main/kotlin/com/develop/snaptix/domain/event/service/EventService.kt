@@ -82,7 +82,7 @@ class EventService(
         try {
             eventRedisInitializer.initialize(event, request, zones)
         } catch (exception: DataAccessException) {
-            throw BusinessException(ErrorCode.EVENT_CREATION_FAILED, cause = exception)
+            throw BusinessException(ErrorCode.EVENT_REDIS_INITIALIZATION_FAILED, cause = exception)
         }
     }
 
