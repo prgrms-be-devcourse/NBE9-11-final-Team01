@@ -2,6 +2,8 @@ package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.dto.EventBulkCreateRequest
 import com.develop.snaptix.domain.event.dto.EventBulkCreateResponse
+import com.develop.snaptix.domain.event.dto.EventStatusUpdateRequest
+import com.develop.snaptix.domain.event.dto.EventStatusUpdateResponse
 import com.develop.snaptix.domain.event.dto.ZoneCreateResult
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.repository.EventInsertResult
@@ -18,6 +20,12 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 private val ALLOWED_INITIAL_STATUSES = setOf(EventStatus.PENDING, EventStatus.ON_SALE)
+private val ALLOWED_STATUS_TRANSITIONS =
+    mapOf(
+        EventStatus.PENDING to setOf(EventStatus.ON_SALE),
+        EventStatus.ON_SALE to setOf(EventStatus.SOLD_OUT, EventStatus.CLOSED),
+        EventStatus.SOLD_OUT to setOf(EventStatus.CLOSED),
+    )
 
 @Service
 class EventService(
@@ -75,6 +83,26 @@ class EventService(
         }
     }
 
+    fun updateEventStatus(
+        eventId: String,
+        request: EventStatusUpdateRequest,
+    ): EventStatusUpdateResponse =
+        transaction {
+            val event =
+                eventRepository.findByPublicId(eventId)
+                    ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+            val currentStatus = EventStatus.valueOf(event.status)
+
+            validateStatusTransition(currentStatus, request.status)
+            eventRepository.updateStatusByPublicId(eventId, request.status)
+
+            EventStatusUpdateResponse(
+                eventId = event.publicId,
+                status = request.status,
+                message = "이벤트 상태가 변경되었습니다.",
+            )
+        }
+
     private fun initializeRedis(
         event: EventInsertResult,
         request: EventBulkCreateRequest,
@@ -104,6 +132,18 @@ class EventService(
     ) {
         if (!endTime.toInstant().isAfter(startTime.toInstant())) {
             throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "이벤트 종료 시각은 시작 시각 이후여야 합니다.")
+        }
+    }
+
+    private fun validateStatusTransition(
+        currentStatus: EventStatus,
+        nextStatus: EventStatus,
+    ) {
+        if (nextStatus !in ALLOWED_STATUS_TRANSITIONS[currentStatus].orEmpty()) {
+            throw BusinessException(
+                ErrorCode.INVALID_REQUEST_PARAMETER,
+                "허용되지 않는 이벤트 상태 변경입니다. 현재 상태: $currentStatus, 요청 상태: $nextStatus",
+            )
         }
     }
 }
