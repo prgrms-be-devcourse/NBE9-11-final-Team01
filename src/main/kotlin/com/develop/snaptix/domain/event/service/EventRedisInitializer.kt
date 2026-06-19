@@ -32,13 +32,13 @@ private val EVENT_REDIS_INITIALIZE_SCRIPT =
           remember(KEYS[1])
           redis.call('EXPIRE', KEYS[1], ttlSeconds)
 
-          local groupOk, groupErr = pcall(function()
-            redis.call('XGROUP', 'CREATE', KEYS[2], groupName, '$', 'MKSTREAM')
-          end)
-          if groupOk then
+          local groupResult = redis.pcall('XGROUP', 'CREATE', KEYS[2], groupName, '$', 'MKSTREAM')
+          if type(groupResult) == 'table' and groupResult.err then
+            if not string.find(groupResult.err, 'BUSYGROUP') then
+              error(groupResult.err)
+            end
+          else
             remember(KEYS[2])
-          elseif not string.find(tostring(groupErr), 'BUSYGROUP') then
-            error(groupErr)
           end
 
           local stockCount = tonumber(ARGV[argIndex])
