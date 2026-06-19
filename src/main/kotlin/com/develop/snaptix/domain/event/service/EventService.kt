@@ -10,11 +10,9 @@ import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.stereotype.Service
-import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.OffsetDateTime
 import java.util.UUID
 
-private val EVENT_TIME_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
 private val ALLOWED_INITIAL_STATUSES = setOf(EventStatus.PENDING, EventStatus.ON_SALE)
 
 @Service
@@ -32,8 +30,8 @@ class EventService(
                     name = request.name,
                     description = request.description,
                     location = request.location,
-                    startTime = request.startTime.toKstInstant(),
-                    endTime = request.endTime.toKstInstant(),
+                    startTime = request.startTime.toInstant(),
+                    endTime = request.endTime.toInstant(),
                     posterUrl = request.posterUrl,
                     status = request.initialStatus,
                 )
@@ -68,14 +66,22 @@ class EventService(
     }
 
     private fun validateCreateRequest(request: EventBulkCreateRequest) {
-        if (request.initialStatus !in ALLOWED_INITIAL_STATUSES) {
-            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "초기 이벤트 상태는 PENDING 또는 ON_SALE만 허용됩니다.")
-        }
+        validateInitialStatus(request.initialStatus)
+        validateEventTimes(request.startTime, request.endTime)
+    }
 
-        if (!request.endTime.isAfter(request.startTime)) {
-            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "이벤트 종료 시각은 시작 시각 이후여야 합니다.")
+    private fun validateInitialStatus(initialStatus: EventStatus) {
+        if (initialStatus !in ALLOWED_INITIAL_STATUSES) {
+            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "초기 이벤트 상태는 PENDING 또는 ON_SALE만 허용됩니다.")
         }
     }
 
-    private fun LocalDateTime.toKstInstant() = atZone(EVENT_TIME_ZONE).toInstant()
+    private fun validateEventTimes(
+        startTime: OffsetDateTime,
+        endTime: OffsetDateTime,
+    ) {
+        if (!endTime.toInstant().isAfter(startTime.toInstant())) {
+            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "이벤트 종료 시각은 시작 시각 이후여야 합니다.")
+        }
+    }
 }

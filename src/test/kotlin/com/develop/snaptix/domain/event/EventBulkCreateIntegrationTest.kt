@@ -137,8 +137,8 @@ class EventBulkCreateIntegrationTest(
                 contentType = MediaType.APPLICATION_JSON
                 content =
                     createRequest(
-                        startTime = "2027-12-25T22:00:00",
-                        endTime = "2027-12-25T19:00:00",
+                        startTime = "2027-12-25T22:00:00+09:00",
+                        endTime = "2027-12-25T19:00:00+09:00",
                     )
             }.andExpect {
                 status { isBadRequest() }
@@ -168,8 +168,8 @@ class EventBulkCreateIntegrationTest(
 
     private fun createRequest(
         initialStatus: String = "PENDING",
-        startTime: String = "2027-12-25T19:00:00",
-        endTime: String = "2027-12-25T22:00:00",
+        startTime: String = "2027-12-25T19:00:00+09:00",
+        endTime: String = "2027-12-25T22:00:00+09:00",
     ): String =
         """
         {

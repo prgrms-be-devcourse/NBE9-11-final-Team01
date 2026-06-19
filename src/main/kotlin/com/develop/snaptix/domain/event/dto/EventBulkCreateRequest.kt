@@ -8,7 +8,7 @@ import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import org.hibernate.validator.constraints.URL
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 data class EventBulkCreateRequest(
     @field:NotBlank(message = "이벤트명은 필수입니다.")
@@ -21,10 +21,10 @@ data class EventBulkCreateRequest(
     val location: String,
     @field:NotNull(message = "이벤트 시작 시각은 필수입니다.")
     @field:Future(message = "이벤트 시작 시각은 현재 시각 이후여야 합니다.")
-    val startTime: LocalDateTime,
+    val startTime: OffsetDateTime,
     @field:NotNull(message = "이벤트 종료 시각은 필수입니다.")
     @field:Future(message = "이벤트 종료 시각은 현재 시각 이후여야 합니다.")
-    val endTime: LocalDateTime,
+    val endTime: OffsetDateTime,
     @field:NotNull(message = "초기 이벤트 상태는 필수입니다.")
     val initialStatus: EventStatus,
     @field:URL(message = "포스터 URL 형식이 올바르지 않습니다.")
