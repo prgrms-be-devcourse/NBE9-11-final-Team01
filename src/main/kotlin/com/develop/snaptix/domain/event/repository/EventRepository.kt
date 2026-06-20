@@ -7,6 +7,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
@@ -80,6 +81,15 @@ class EventRepository {
 
         return EventInsertResult(id = id, publicId = publicId)
     }
+
+    fun updateStatusByPublicId(
+        publicId: String,
+        status: EventStatus,
+    ): Int =
+        EventsTable.update({ EventsTable.publicId eq publicId }) {
+            it[EventsTable.status] = status.name
+            it[EventsTable.updatedAt] = Instant.now()
+        }
 
     private fun ResultRow.toRecord() =
         EventRecord(
