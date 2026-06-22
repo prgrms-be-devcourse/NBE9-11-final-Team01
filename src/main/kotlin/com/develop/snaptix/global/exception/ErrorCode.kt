@@ -149,6 +149,11 @@ enum class ErrorCode(
         "EVENT-004",
         "Redis 초기화에 실패하여 이벤트를 생성할 수 없습니다.",
     ),
+    EVENT_STATUS_CONFLICT(
+        HttpStatus.CONFLICT,
+        "EVENT-005",
+        "이벤트 상태가 변경되어 요청을 처리할 수 없습니다.",
+    ),
 
     // ==================== 티켓 (TICKET) ====================
     // Path Variable이 UUID 형식(36자리)이 아닌 경우

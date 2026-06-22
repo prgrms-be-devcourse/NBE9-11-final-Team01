@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.event.repository
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -84,9 +85,12 @@ class EventRepository {
 
     fun updateStatusByPublicId(
         publicId: String,
+        currentStatus: EventStatus,
         status: EventStatus,
     ): Int =
-        EventsTable.update({ EventsTable.publicId eq publicId }) {
+        EventsTable.update({
+            (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
+        }) {
             it[EventsTable.status] = status.name
             it[EventsTable.updatedAt] = Instant.now()
         }

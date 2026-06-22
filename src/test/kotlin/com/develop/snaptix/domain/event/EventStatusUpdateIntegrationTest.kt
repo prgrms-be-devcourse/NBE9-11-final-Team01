@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.event
 
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
+import com.develop.snaptix.domain.event.repository.EventRepository
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
 import org.assertj.core.api.Assertions.assertThat
@@ -38,6 +39,7 @@ import java.util.UUID
 class EventStatusUpdateIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val redisTemplate: StringRedisTemplate,
+    @Autowired private val eventRepository: EventRepository,
 ) {
     companion object {
         @Container
@@ -99,6 +101,42 @@ class EventStatusUpdateIntegrationTest(
     }
 
     @Test
+    fun `ON_SALE 이벤트는 SOLD_OUT으로 변경할 수 있다`() {
+        val eventId = insertEvent(status = EventStatus.ON_SALE)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"SOLD_OUT"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(eventId) }
+                jsonPath("$.status") { value("SOLD_OUT") }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.SOLD_OUT.name)
+    }
+
+    @Test
+    fun `SOLD_OUT 이벤트는 CLOSED로 변경할 수 있다`() {
+        val eventId = insertEvent(status = EventStatus.SOLD_OUT)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(eventId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.CLOSED.name)
+    }
+
+    @Test
     fun `USER 권한은 이벤트 상태를 변경할 수 없다`() {
         val eventId = insertEvent(status = EventStatus.PENDING)
 
@@ -148,6 +186,40 @@ class EventStatusUpdateIntegrationTest(
     }
 
     @Test
+    fun `동일한 이벤트 상태로 변경할 수 없다`() {
+        val eventId = insertEvent(status = EventStatus.ON_SALE)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"ON_SALE"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.ON_SALE.name)
+    }
+
+    @Test
+    fun `이벤트 상태를 역방향으로 변경할 수 없다`() {
+        val eventId = insertEvent(status = EventStatus.SOLD_OUT)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"ON_SALE"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.SOLD_OUT.name)
+    }
+
+    @Test
     fun `변경할 이벤트 상태가 없으면 실패한다`() {
         val eventId = insertEvent(status = EventStatus.PENDING)
 
@@ -178,6 +250,40 @@ class EventStatusUpdateIntegrationTest(
                 jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
             }
 
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
+    }
+
+    @Test
+    fun `저장된 이벤트 상태값이 올바르지 않으면 상태 변경에 실패한다`() {
+        val eventId = insertEvent(status = "UNKNOWN")
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"ON_SALE"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo("UNKNOWN")
+    }
+
+    @Test
+    fun `조건부 상태 변경은 현재 상태가 일치하지 않으면 실패한다`() {
+        val eventId = insertEvent(status = EventStatus.PENDING)
+
+        val updatedRows =
+            transaction {
+                eventRepository.updateStatusByPublicId(
+                    publicId = eventId,
+                    currentStatus = EventStatus.ON_SALE,
+                    status = EventStatus.CLOSED,
+                )
+            }
+
+        assertThat(updatedRows).isZero()
         assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
     }
 
@@ -294,7 +400,9 @@ class EventStatusUpdateIntegrationTest(
         }
     }
 
-    private fun insertEvent(status: EventStatus): String {
+    private fun insertEvent(status: EventStatus): String = insertEvent(status = status.name)
+
+    private fun insertEvent(status: String): String {
         val publicId = UUID.randomUUID().toString()
         val now = Instant.parse("2027-12-25T10:00:00Z")
 
@@ -305,7 +413,7 @@ class EventStatusUpdateIntegrationTest(
                 it[EventsTable.location] = "KSPO DOME"
                 it[EventsTable.startTime] = now
                 it[EventsTable.endTime] = now.plusSeconds(10_800)
-                it[EventsTable.status] = status.name
+                it[EventsTable.status] = status
             }
         }
 
