@@ -44,10 +44,14 @@ class EventRedisKeyCleaner(
 
     private fun getOrderStreamStatus(streamKey: String): OrderStreamStatus {
         val streamOperations = redisTemplate.opsForStream<String, String>()
-        val streamLength = streamOperations.size(streamKey) ?: 0L
-        if (streamLength > 0) {
-            return OrderStreamStatus(streamLength = streamLength, pendingCount = 0L, canDelete = false)
-        }
+        val streamInfo =
+            try {
+                streamOperations.info(streamKey)
+            } catch (exception: DataAccessException) {
+                logger.debug(exception) { "[EVENT_ORDER_STREAM_INFO_SKIPPED] streamKey=$streamKey" }
+                return OrderStreamStatus(streamLength = 0L, pendingCount = 0L, canDelete = true)
+            }
+        val streamLength = streamInfo.streamLength()
 
         val pendingCount =
             try {
@@ -56,11 +60,22 @@ class EventRedisKeyCleaner(
                 logger.debug(exception) { "[EVENT_ORDER_STREAM_PENDING_SKIPPED] streamKey=$streamKey" }
                 0L
             }
+        val groupLastDeliveredId =
+            try {
+                streamOperations
+                    .groups(streamKey)
+                    .firstOrNull { it.groupName() == ORDER_WORKERS_GROUP }
+                    ?.lastDeliveredId()
+            } catch (exception: DataAccessException) {
+                logger.debug(exception) { "[EVENT_ORDER_STREAM_GROUP_SKIPPED] streamKey=$streamKey" }
+                null
+            }
+        val hasUndeliveredMessages = streamLength > 0 && groupLastDeliveredId != streamInfo.lastGeneratedId()
 
         return OrderStreamStatus(
             streamLength = streamLength,
             pendingCount = pendingCount,
-            canDelete = pendingCount == 0L,
+            canDelete = pendingCount == 0L && !hasUndeliveredMessages,
         )
     }
 

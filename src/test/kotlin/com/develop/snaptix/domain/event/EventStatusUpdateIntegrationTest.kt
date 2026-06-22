@@ -15,6 +15,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.data.redis.connection.stream.Consumer
+import org.springframework.data.redis.connection.stream.ReadOffset
+import org.springframework.data.redis.connection.stream.StreamOffset
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
@@ -234,6 +237,63 @@ class EventStatusUpdateIntegrationTest(
             }
     }
 
+    @Test
+    fun `이벤트가 CLOSED로 변경되어도 PEL에 남은 주문 Stream은 삭제하지 않는다`() {
+        val event = insertEventWithZones(status = EventStatus.ON_SALE)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = false)
+        val orderStreamKey = seedPendingOrderStream(event)
+        val allKeys = redisKeys + orderStreamKey
+
+        allKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isTrue()
+        }
+
+        mockMvc
+            .patch("/api/v1/admin/events/${event.publicId}/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
+        assertThat(redisTemplate.hasKey(orderStreamKey)).isTrue()
+        redisKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isFalse()
+        }
+    }
+
+    @Test
+    fun `이벤트가 CLOSED로 변경되면 ACK 완료된 주문 Stream은 삭제한다`() {
+        val event = insertEventWithZones(status = EventStatus.ON_SALE)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = false)
+        val orderStreamKey = seedAcknowledgedOrderStream(event)
+        val allKeys = redisKeys + orderStreamKey
+
+        allKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isTrue()
+        }
+
+        mockMvc
+            .patch("/api/v1/admin/events/${event.publicId}/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
+        allKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isFalse()
+        }
+    }
+
     private fun insertEvent(status: EventStatus): String {
         val publicId = UUID.randomUUID().toString()
         val now = Instant.parse("2027-12-25T10:00:00Z")
@@ -309,6 +369,35 @@ class EventStatusUpdateIntegrationTest(
         }
 
         return keys
+    }
+
+    private fun seedPendingOrderStream(event: CreatedEvent): String {
+        val orderStreamKey = "queue:order:${event.publicId}"
+        val streamOperations = redisTemplate.opsForStream<String, String>()
+
+        streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.read(
+            Consumer.from("order-workers", "consumer-1"),
+            StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
+        )
+
+        return orderStreamKey
+    }
+
+    private fun seedAcknowledgedOrderStream(event: CreatedEvent): String {
+        val orderStreamKey = "queue:order:${event.publicId}"
+        val streamOperations = redisTemplate.opsForStream<String, String>()
+        val recordId = streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
+
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.read(
+            Consumer.from("order-workers", "consumer-1"),
+            StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
+        )
+        streamOperations.acknowledge(orderStreamKey, "order-workers", recordId)
+
+        return orderStreamKey
     }
 
     private fun deleteRedisKeys(pattern: String) {
