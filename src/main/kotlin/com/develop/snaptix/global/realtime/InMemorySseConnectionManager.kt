@@ -8,10 +8,12 @@ import com.develop.snaptix.global.realtime.port.OwnershipResult
 import com.develop.snaptix.global.realtime.port.SseChannelSubscriber
 import com.develop.snaptix.global.realtime.port.StateReconstructor
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
 
 /**
  * [SseConnectionManager]의 실제 코어 구현 (PR-02, PR-03에서 수명/heartbeat 반영).
@@ -36,6 +38,9 @@ class InMemorySseConnectionManager(
     private val stateReconstructors: Map<String, StateReconstructor> = emptyMap(),
     private val subscriber: SseChannelSubscriber = NoOpSseChannelSubscriber(),
     private val properties: RealtimeProperties = RealtimeProperties(),
+    // 전송 실행기. Spring 이 sseSendExecutor 빈을 주입하면 비동기, 미주입(테스트)이면 동기(동일 스레드).
+    @Qualifier(SseExecutorConfig.SSE_SEND_EXECUTOR)
+    private val sendExecutor: Executor = Executor { it.run() },
 ) : SseConnectionManager {
     private val logger = KotlinLogging.logger {}
 
@@ -77,19 +82,21 @@ class InMemorySseConnectionManager(
     ) {
         val emitter = registry[key] ?: return // 이 인스턴스에 연결 없음 → no-op
 
-        // NOTE: 본 PR은 동기 전송. PR-06에서 전용 TaskExecutor 비동기 전송으로 교체.
-        try {
-            emitter.send(SseEmitter.event().name(event.name).data(event.data))
-            if (event.terminal) {
-                runCatching { emitter.complete() }
+        // 전송은 sendExecutor 에서(기본 비동기). 리스너/요청 스레드를 블로킹하지 않는다. (PR-06)
+        sendExecutor.execute {
+            try {
+                emitter.send(SseEmitter.event().name(event.name).data(event.data))
+                if (event.terminal) {
+                    runCatching { emitter.complete() }
+                    cleanup(key, emitter)
+                }
+            } catch (ex: IOException) {
+                logger.debug(ex) { "SSE send 실패 → 정리: ${key.registryKey()}" }
+                cleanup(key, emitter)
+            } catch (ex: IllegalStateException) {
+                logger.debug(ex) { "SSE 연결이 이미 종료됨 → 정리: ${key.registryKey()}" }
                 cleanup(key, emitter)
             }
-        } catch (ex: IOException) {
-            logger.debug(ex) { "SSE send 실패 → 정리: ${key.registryKey()}" }
-            cleanup(key, emitter)
-        } catch (ex: IllegalStateException) {
-            logger.debug(ex) { "SSE 연결이 이미 종료됨 → 정리: ${key.registryKey()}" }
-            cleanup(key, emitter)
         }
     }
 

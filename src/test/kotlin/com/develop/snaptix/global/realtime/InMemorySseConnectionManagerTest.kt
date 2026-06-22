@@ -8,6 +8,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpStatus
+import java.util.concurrent.Executor
 
 class InMemorySseConnectionManagerTest {
     private val key = SseChannelKey("order", "order-1")
@@ -93,5 +94,27 @@ class InMemorySseConnectionManagerTest {
         manager.connect(key, userId)
         manager.heartbeat() // 신선한 연결엔 ping 정상 전송
         assertThat(manager.activeConnections()).isEqualTo(1)
+    }
+
+    @Test
+    fun `dispatch 는 sendExecutor 에 위임한다`() {
+        val tasks = mutableListOf<Runnable>() // 실행을 보류하고 캡처만
+        val manager =
+            InMemorySseConnectionManager(
+                ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> OwnershipResult.OWNED }),
+                stateReconstructors = mapOf("order" to StateReconstructor { null }),
+                sendExecutor = Executor { tasks += it },
+            )
+        manager.connect(key, userId)
+
+        manager.dispatch(key, SseEvent.terminal("TICKET_ISSUED", "x"))
+
+        // 실행기에 위임만 됐을 뿐 아직 실행 전 → 정리 미수행(활성 1 유지)
+        assertThat(tasks).hasSize(1)
+        assertThat(manager.activeConnections()).isEqualTo(1)
+
+        // 작업을 실제로 실행하면 전송 + 정리 수행
+        tasks.forEach { it.run() }
+        assertThat(manager.activeConnections()).isEqualTo(0)
     }
 }
