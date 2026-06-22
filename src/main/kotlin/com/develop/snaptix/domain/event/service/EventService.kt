@@ -107,7 +107,7 @@ class EventService(
                         status = request.status,
                     )
                 if (updatedRows != 1) {
-                    throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "이벤트 상태가 변경되어 요청을 처리할 수 없습니다.")
+                    throw BusinessException(ErrorCode.EVENT_STATUS_CONFLICT)
                 }
 
                 if (request.status == EventStatus.CLOSED) {
