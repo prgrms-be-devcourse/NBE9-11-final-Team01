@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.zone.repository
 
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -31,6 +32,12 @@ class ZoneRepository {
             rowsByPublicId.getValue(zone.publicId).toInsertResult()
         }
     }
+
+    fun findIdsByEventId(eventId: Long): List<Long> =
+        ZonesTable
+            .selectAll()
+            .where { ZonesTable.eventId eq eventId }
+            .map { it[ZonesTable.id] }
 
     private fun ResultRow.toInsertResult(): ZoneInsertResult =
         ZoneInsertResult(

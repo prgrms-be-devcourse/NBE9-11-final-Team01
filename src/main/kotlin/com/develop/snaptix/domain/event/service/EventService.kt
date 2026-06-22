@@ -13,6 +13,7 @@ import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
@@ -32,7 +33,10 @@ class EventService(
     private val eventRepository: EventRepository,
     private val zoneRepository: ZoneRepository,
     private val eventRedisInitializer: EventRedisInitializer,
+    private val eventRedisKeyCleaner: EventRedisKeyCleaner,
 ) {
+    private val logger = KotlinLogging.logger {}
+
     fun createEventWithZones(request: EventBulkCreateRequest): EventBulkCreateResponse {
         validateCreateRequest(request)
 
@@ -86,22 +90,44 @@ class EventService(
     fun updateEventStatus(
         eventId: String,
         request: EventStatusUpdateRequest,
-    ): EventStatusUpdateResponse =
-        transaction {
-            val event =
-                eventRepository.findByPublicId(eventId)
-                    ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
-            val currentStatus = EventStatus.valueOf(event.status)
+    ): EventStatusUpdateResponse {
+        var cleanupTarget: EventRedisCleanupTarget? = null
+        val response =
+            transaction {
+                val event =
+                    eventRepository.findByPublicId(eventId)
+                        ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+                val currentStatus = EventStatus.valueOf(event.status)
 
-            validateStatusTransition(currentStatus, request.status)
-            eventRepository.updateStatusByPublicId(eventId, request.status)
+                validateStatusTransition(currentStatus, request.status)
+                eventRepository.updateStatusByPublicId(eventId, request.status)
 
-            EventStatusUpdateResponse(
-                eventId = event.publicId,
-                status = request.status,
-                message = "이벤트 상태가 변경되었습니다.",
-            )
+                if (request.status == EventStatus.CLOSED) {
+                    cleanupTarget =
+                        EventRedisCleanupTarget(
+                            eventPublicId = event.publicId,
+                            zoneIds = zoneRepository.findIdsByEventId(event.id),
+                        )
+                }
+
+                EventStatusUpdateResponse(
+                    eventId = event.publicId,
+                    status = request.status,
+                    message = "이벤트 상태가 변경되었습니다.",
+                )
+            }
+
+        cleanupTarget?.let(::cleanupRedisKeys)
+        return response
+    }
+
+    private fun cleanupRedisKeys(target: EventRedisCleanupTarget) {
+        try {
+            eventRedisKeyCleaner.cleanup(target)
+        } catch (exception: DataAccessException) {
+            logger.warn(exception) { "[EVENT_REDIS_CLEANUP_FAILED] eventPublicId=${target.eventPublicId}" }
         }
+    }
 
     private fun initializeRedis(
         event: EventInsertResult,
