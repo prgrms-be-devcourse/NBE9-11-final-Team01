@@ -162,6 +162,19 @@ enum class ErrorCode(
         "TICKET-002",
         "존재하지 않는 티켓입니다.",
     ),
+	
+    // ==================== 티켓 (TICKET) 추가 6/22 ============
+    EVENT_MISMATCH(
+        HttpStatus.CONFLICT,
+        "TICKET-003",
+        "티켓의 이벤트가 일치하지 않습니다.",
+    ),
+
+    TICKET_ALREADY_USED(
+        HttpStatus.CONFLICT,
+        "TICKET-004",
+        "이미 사용된 티켓입니다.",
+    ),
 
     // ==================== 메트릭 (METRIC) ====================
     METRIC_NOT_FOUND(

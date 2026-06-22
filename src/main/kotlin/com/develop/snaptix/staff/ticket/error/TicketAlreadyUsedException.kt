@@ -1,5 +1,9 @@
 package com.develop.snaptix.staff.ticket.error
 
-import com.develop.snaptix.staff.ticket.dto.ErrorCode
+import com.develop.snaptix.global.exception.BusinessException
+import com.develop.snaptix.global.exception.ErrorCode
 
-class TicketAlreadyUsedException : TicketVerifyException(ErrorCode.TICKET_ALREADY_USED)
+class TicketAlreadyUsedException :
+    BusinessException(
+        ErrorCode.TICKET_ALREADY_USED,
+    )
