@@ -2,6 +2,8 @@ package com.develop.snaptix.global.realtime
 
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.realtime.observability.NoOpSseObserver
+import com.develop.snaptix.global.realtime.observability.SseObserver
 import com.develop.snaptix.global.realtime.port.NoOpSseChannelSubscriber
 import com.develop.snaptix.global.realtime.port.OwnershipChecker
 import com.develop.snaptix.global.realtime.port.OwnershipResult
@@ -41,6 +43,8 @@ class InMemorySseConnectionManager(
     // 전송 실행기. Spring 이 sseSendExecutor 빈을 주입하면 비동기, 미주입(테스트)이면 동기(동일 스레드).
     @Qualifier(SseExecutorConfig.SSE_SEND_EXECUTOR)
     private val sendExecutor: Executor = Executor { it.run() },
+    // 관측 hook. 빈이 있으면 주입, 없으면 무동작(테스트 무변경).
+    private val observer: SseObserver = NoOpSseObserver,
 ) : SseConnectionManager {
     private val logger = KotlinLogging.logger {}
 
@@ -70,6 +74,7 @@ class InMemorySseConnectionManager(
         }
 
         registerLifecycle(key, emitter)
+        observer.onConnect(key)
 
         // Pub/Sub 비영속 대비: 연결 직후 현재 상태를 재구성해 1회 전송
         stateReconstructors[key.resource]?.reconstruct(key)?.let { dispatch(key, it) }
@@ -86,15 +91,18 @@ class InMemorySseConnectionManager(
         sendExecutor.execute {
             try {
                 emitter.send(SseEmitter.event().name(event.name).data(event.data))
+                observer.onDispatch(key, event)
                 if (event.terminal) {
                     runCatching { emitter.complete() }
                     cleanup(key, emitter)
                 }
             } catch (ex: IOException) {
                 logger.debug(ex) { "SSE send 실패 → 정리: ${key.registryKey()}" }
+                observer.onDispatchFailure(key, ex)
                 cleanup(key, emitter)
             } catch (ex: IllegalStateException) {
                 logger.debug(ex) { "SSE 연결이 이미 종료됨 → 정리: ${key.registryKey()}" }
+                observer.onDispatchFailure(key, ex)
                 cleanup(key, emitter)
             }
         }
@@ -104,6 +112,7 @@ class InMemorySseConnectionManager(
         val emitter = registry.remove(key) ?: return
         runCatching { emitter.complete() }
         subscriber.unsubscribe(key)
+        observer.onDisconnect(key)
     }
 
     override fun activeConnections(): Int = registry.size
@@ -149,6 +158,7 @@ class InMemorySseConnectionManager(
     ) {
         if (registry.remove(key, emitter)) {
             subscriber.unsubscribe(key)
+            observer.onDisconnect(key)
         }
     }
 }
