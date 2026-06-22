@@ -82,3 +82,15 @@ realtime:
   sse:
     timeout: 8m
     heartbeat-interval: 30s
+
+snaptix:
+  redis:
+    ttl:
+      ingest-envelope: 8m       # 멱등/소유권 봉투(권장 8분, 부하테스트로 조정)
+      order-hold: 5m            # ORDER_HOLD = 워커 재앵커링 기준
+      webhook-processed: 10m
+      payment-approve: 60s
+      event-info: 1h            # Story 1.1 / 11.2 / 13.2 일치
+      order-pending: 2m
+      rate-limit-second: 1s
+      rate-limit-minute: 60s
