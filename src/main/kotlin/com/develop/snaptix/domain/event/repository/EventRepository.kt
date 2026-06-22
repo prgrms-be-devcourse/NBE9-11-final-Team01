@@ -21,23 +21,21 @@ data class EventRecord(
 
 @Repository
 class EventRepository {
-    fun findByPublicId(publicId: String): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.publicId eq publicId }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findByPublicId(publicId: String): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.publicId eq publicId }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
-    fun findById(id: Long): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.id eq id }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findById(id: Long): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.id eq id }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
     fun insert(
         publicId: String,
@@ -46,17 +44,16 @@ class EventRepository {
         startTime: Instant,
         endTime: Instant,
         status: String,
-    ): Long =
-        transaction {
-            EventsTable.insert {
-                it[EventsTable.publicId] = publicId
-                it[EventsTable.name] = name
-                it[EventsTable.location] = location
-                it[EventsTable.startTime] = startTime
-                it[EventsTable.endTime] = endTime
-                it[EventsTable.status] = status
-            }[EventsTable.id]
-        }
+    ): Long = transaction {
+        EventsTable.insert {
+            it[EventsTable.publicId] = publicId
+            it[EventsTable.name] = name
+            it[EventsTable.location] = location
+            it[EventsTable.startTime] = startTime
+            it[EventsTable.endTime] = endTime
+            it[EventsTable.status] = status
+        }[EventsTable.id]
+    }
 
     fun insertEvent(
         publicId: String,
@@ -87,19 +84,17 @@ class EventRepository {
         publicId: String,
         currentStatus: EventStatus,
         status: EventStatus,
-    ): Int =
-        EventsTable.update({
-            (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
-        }) {
-            it[EventsTable.status] = status.name
-            it[EventsTable.updatedAt] = Instant.now()
-        }
+    ): Int = EventsTable.update({
+        (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
+    }) {
+        it[EventsTable.status] = status.name
+        it[EventsTable.updatedAt] = Instant.now()
+    }
 
-    private fun ResultRow.toRecord() =
-        EventRecord(
-            id = this[EventsTable.id],
-            publicId = this[EventsTable.publicId],
-            name = this[EventsTable.name],
-            status = this[EventsTable.status],
-        )
+    private fun ResultRow.toRecord() = EventRecord(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        status = this[EventsTable.status],
+    )
 }

@@ -71,18 +71,17 @@ class RedisOperationLoggingAspect {
         elapsed: Long,
         returnValue: Any? = null,
         error: String? = null,
-    ): Map<String, Any?> =
-        buildMap {
-            put("action", action.name)
-            put("traceId", traceId)
-            put("result", result)
-            put("executionTimeMs", elapsed)
+    ): Map<String, Any?> = buildMap {
+        put("action", action.name)
+        put("traceId", traceId)
+        put("result", result)
+        put("executionTimeMs", elapsed)
 
-            // 재고 차감 액션에만 remaining_stock 포함
-            if (action == RedisAction.LUASCRIPT_DECREASE && returnValue != null) {
-                put("remaining_stock", returnValue)
-            }
-
-            error?.let { put("error", it) }
+        // 재고 차감 액션에만 remaining_stock 포함
+        if (action == RedisAction.LUASCRIPT_DECREASE && returnValue != null) {
+            put("remaining_stock", returnValue)
         }
+
+        error?.let { put("error", it) }
+    }
 }

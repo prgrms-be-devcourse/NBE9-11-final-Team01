@@ -43,12 +43,11 @@ class SseObservabilityTest {
         }
     }
 
-    private fun managerWith(observer: SseObserver) =
-        InMemorySseConnectionManager(
-            ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> OwnershipResult.OWNED }),
-            stateReconstructors = mapOf("order" to StateReconstructor { null }),
-            observer = observer,
-        )
+    private fun managerWith(observer: SseObserver) = InMemorySseConnectionManager(
+        ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> OwnershipResult.OWNED }),
+        stateReconstructors = mapOf("order" to StateReconstructor { null }),
+        observer = observer,
+    )
 
     @Test
     fun `connect 시 onConnect 가 호출된다`() {

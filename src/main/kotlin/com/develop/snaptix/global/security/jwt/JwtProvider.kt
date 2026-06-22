@@ -24,27 +24,24 @@ class JwtProvider(
     fun createAccessToken(
         userId: Long,
         role: UserRole,
-    ): String =
-        createToken(
-            userId = userId,
-            role = role,
-            expiresInSeconds = jwtProperties.accessTokenExpirationSeconds,
-        )
+    ): String = createToken(
+        userId = userId,
+        role = role,
+        expiresInSeconds = jwtProperties.accessTokenExpirationSeconds,
+    )
 
     fun createRefreshToken(
         userId: Long,
         role: UserRole,
-    ): String =
-        createToken(
-            userId = userId,
-            role = role,
-            expiresInSeconds = jwtProperties.refreshTokenExpirationSeconds,
-        )
+    ): String = createToken(
+        userId = userId,
+        role = role,
+        expiresInSeconds = jwtProperties.refreshTokenExpirationSeconds,
+    )
 
-    fun isValid(token: String): Boolean =
-        runCatching {
-            parseClaims(token)
-        }.isSuccess
+    fun isValid(token: String): Boolean = runCatching {
+        parseClaims(token)
+    }.isSuccess
 
     fun getUserId(token: String): Long = parseClaims(token).subject.toLong()
 
@@ -68,12 +65,11 @@ class JwtProvider(
             .compact()
     }
 
-    private fun parseClaims(token: String): Claims =
-        Jwts
-            .parser()
-            .verifyWith(signingKey)
-            .clock { Date.from(Instant.now(clock)) }
-            .build()
-            .parseSignedClaims(token)
-            .payload
+    private fun parseClaims(token: String): Claims = Jwts
+        .parser()
+        .verifyWith(signingKey)
+        .clock { Date.from(Instant.now(clock)) }
+        .build()
+        .parseSignedClaims(token)
+        .payload
 }

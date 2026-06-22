@@ -94,12 +94,11 @@ class MockContractTest : SseConnectionManagerContract() {
     override fun manager(
         result: OwnershipResult,
         reconstruct: SseEvent?,
-    ): SseConnectionManager =
-        MockSseConnectionManager(
-            ownershipChecker = { _, _ -> result },
-            stateReconstructor = { reconstruct },
-            sendExecutor = { it.run() },
-        )
+    ): SseConnectionManager = MockSseConnectionManager(
+        ownershipChecker = { _, _ -> result },
+        stateReconstructor = { reconstruct },
+        sendExecutor = { it.run() },
+    )
 }
 
 /** 실제 코어 구현으로 계약 검증. */
@@ -107,9 +106,8 @@ class InMemoryContractTest : SseConnectionManagerContract() {
     override fun manager(
         result: OwnershipResult,
         reconstruct: SseEvent?,
-    ): SseConnectionManager =
-        InMemorySseConnectionManager(
-            ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> result }),
-            stateReconstructors = mapOf("order" to StateReconstructor { reconstruct }),
-        )
+    ): SseConnectionManager = InMemorySseConnectionManager(
+        ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> result }),
+        stateReconstructors = mapOf("order" to StateReconstructor { reconstruct }),
+    )
 }

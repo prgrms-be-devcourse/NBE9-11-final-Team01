@@ -13,50 +13,45 @@ private const val SAME_SITE_STRICT = "Strict"
 class CookieProvider(
     private val jwtProperties: JwtProperties,
 ) {
-    fun createAccessTokenCookie(token: String): ResponseCookie =
-        createCookie(
-            name = ACCESS_TOKEN_COOKIE,
-            value = token,
-            path = ROOT_PATH,
-            maxAgeSeconds = jwtProperties.accessTokenExpirationSeconds,
-        )
+    fun createAccessTokenCookie(token: String): ResponseCookie = createCookie(
+        name = ACCESS_TOKEN_COOKIE,
+        value = token,
+        path = ROOT_PATH,
+        maxAgeSeconds = jwtProperties.accessTokenExpirationSeconds,
+    )
 
-    fun createRefreshTokenCookie(token: String): ResponseCookie =
-        createCookie(
-            name = REFRESH_TOKEN_COOKIE,
-            value = token,
-            path = REFRESH_PATH,
-            maxAgeSeconds = jwtProperties.refreshTokenExpirationSeconds,
-        )
+    fun createRefreshTokenCookie(token: String): ResponseCookie = createCookie(
+        name = REFRESH_TOKEN_COOKIE,
+        value = token,
+        path = REFRESH_PATH,
+        maxAgeSeconds = jwtProperties.refreshTokenExpirationSeconds,
+    )
 
-    fun expireAccessTokenCookie(): ResponseCookie =
-        createCookie(
-            name = ACCESS_TOKEN_COOKIE,
-            value = "",
-            path = ROOT_PATH,
-            maxAgeSeconds = 0,
-        )
+    fun expireAccessTokenCookie(): ResponseCookie = createCookie(
+        name = ACCESS_TOKEN_COOKIE,
+        value = "",
+        path = ROOT_PATH,
+        maxAgeSeconds = 0,
+    )
 
-    fun expireRefreshTokenCookie(): ResponseCookie =
-        createCookie(
-            name = REFRESH_TOKEN_COOKIE,
-            value = "",
-            path = REFRESH_PATH,
-            maxAgeSeconds = 0,
-        )
+    fun expireRefreshTokenCookie(): ResponseCookie = createCookie(
+        name = REFRESH_TOKEN_COOKIE,
+        value = "",
+        path = REFRESH_PATH,
+        maxAgeSeconds = 0,
+    )
 
     private fun createCookie(
         name: String,
         value: String,
         path: String,
         maxAgeSeconds: Long,
-    ): ResponseCookie =
-        ResponseCookie
-            .from(name, value)
-            .httpOnly(true)
-            .secure(true)
-            .sameSite(SAME_SITE_STRICT)
-            .path(path)
-            .maxAge(maxAgeSeconds)
-            .build()
+    ): ResponseCookie = ResponseCookie
+        .from(name, value)
+        .httpOnly(true)
+        .secure(true)
+        .sameSite(SAME_SITE_STRICT)
+        .path(path)
+        .maxAge(maxAgeSeconds)
+        .build()
 }

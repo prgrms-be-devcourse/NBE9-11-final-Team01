@@ -81,12 +81,11 @@ class MicrometerSseObserver(
         action: String,
         result: String,
         key: SseChannelKey,
-    ): Map<String, Any> =
-        mapOf(
-            "action" to action,
-            "result" to result,
-            "resource" to key.resource,
-            "id" to key.id,
-            "traceId" to (MDC.get("traceId") ?: "unknown"),
-        )
+    ): Map<String, Any> = mapOf(
+        "action" to action,
+        "result" to result,
+        "resource" to key.resource,
+        "id" to key.id,
+        "traceId" to (MDC.get("traceId") ?: "unknown"),
+    )
 }
