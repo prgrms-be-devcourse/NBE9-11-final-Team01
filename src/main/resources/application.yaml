@@ -53,6 +53,13 @@ alert:
   throttle:
     window-seconds: 300
 
+# Rebuild & Reconcile (Epic 13)
+reconcile:
+  hold-window: 5m          # 유효 점유 홀드 윈도우 (cutoff = now - holdWindow)
+  scheduler-cron: "0 */10 * * * *"   # 만료 정산 10분 주기 (Story 13.3-2차)
+  drift-cron: "0 */30 * * * *"       # 상시 드리프트 정산 30분 주기 (Story 13.4)
+  rebuild-lock-ttl: 5m     # 다중 인스턴스 단일 재구축 락 TTL
+
 management:
   endpoints:
     web:
