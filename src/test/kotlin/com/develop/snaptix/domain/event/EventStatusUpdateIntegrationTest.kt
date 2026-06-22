@@ -15,6 +15,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.data.redis.connection.stream.Consumer
+import org.springframework.data.redis.connection.stream.ReadOffset
+import org.springframework.data.redis.connection.stream.StreamOffset
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
@@ -181,7 +184,7 @@ class EventStatusUpdateIntegrationTest(
     @Test
     fun `이벤트가 CLOSED로 변경되면 Redis 운영 키를 정리한다`() {
         val event = insertEventWithZones(status = EventStatus.ON_SALE)
-        val redisKeys = seedRedisKeys(event)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = false)
 
         redisKeys.forEach { key ->
             assertThat(redisTemplate.hasKey(key)).isTrue()
@@ -200,6 +203,93 @@ class EventStatusUpdateIntegrationTest(
 
         assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
         redisKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isFalse()
+        }
+    }
+
+    @Test
+    fun `이벤트가 CLOSED로 변경되어도 미처리 주문 Stream은 삭제하지 않는다`() {
+        val event = insertEventWithZones(status = EventStatus.ON_SALE)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = true)
+        val orderStreamKey = "queue:order:${event.publicId}"
+
+        redisKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isTrue()
+        }
+
+        mockMvc
+            .patch("/api/v1/admin/events/${event.publicId}/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
+        assertThat(redisTemplate.hasKey(orderStreamKey)).isTrue()
+        redisKeys
+            .filterNot { it == orderStreamKey }
+            .forEach { key ->
+                assertThat(redisTemplate.hasKey(key)).isFalse()
+            }
+    }
+
+    @Test
+    fun `이벤트가 CLOSED로 변경되어도 PEL에 남은 주문 Stream은 삭제하지 않는다`() {
+        val event = insertEventWithZones(status = EventStatus.ON_SALE)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = false)
+        val orderStreamKey = seedPendingOrderStream(event)
+        val allKeys = redisKeys + orderStreamKey
+
+        allKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isTrue()
+        }
+
+        mockMvc
+            .patch("/api/v1/admin/events/${event.publicId}/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
+        assertThat(redisTemplate.hasKey(orderStreamKey)).isTrue()
+        redisKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isFalse()
+        }
+    }
+
+    @Test
+    fun `이벤트가 CLOSED로 변경되면 ACK 완료된 주문 Stream은 삭제한다`() {
+        val event = insertEventWithZones(status = EventStatus.ON_SALE)
+        val redisKeys = seedRedisKeys(event, includeOrderStream = false)
+        val orderStreamKey = seedAcknowledgedOrderStream(event)
+        val allKeys = redisKeys + orderStreamKey
+
+        allKeys.forEach { key ->
+            assertThat(redisTemplate.hasKey(key)).isTrue()
+        }
+
+        mockMvc
+            .patch("/api/v1/admin/events/${event.publicId}/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"CLOSED"}"""
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("CLOSED") }
+            }
+
+        assertThat(findEventStatus(event.publicId)).isEqualTo(EventStatus.CLOSED.name)
+        allKeys.forEach { key ->
             assertThat(redisTemplate.hasKey(key)).isFalse()
         }
     }
@@ -251,11 +341,16 @@ class EventStatusUpdateIntegrationTest(
         }
     }
 
-    private fun seedRedisKeys(event: CreatedEvent): List<String> {
+    private fun seedRedisKeys(
+        event: CreatedEvent,
+        includeOrderStream: Boolean,
+    ): List<String> {
         val keys =
             buildList {
                 add("event:info:${event.publicId}")
-                add("queue:order:${event.publicId}")
+                if (includeOrderStream) {
+                    add("queue:order:${event.publicId}")
+                }
                 event.zoneIds.forEach { zoneId ->
                     add("ZONE:$zoneId:stock")
                     add("ZONE:$zoneId:claimed")
@@ -264,14 +359,45 @@ class EventStatusUpdateIntegrationTest(
 
         val eventInfo = redisTemplate.opsForHash<String, String>()
         eventInfo.put("event:info:${event.publicId}", "status", EventStatus.ON_SALE.name)
-        val orderStream = redisTemplate.opsForStream<String, String>()
-        orderStream.add("queue:order:${event.publicId}", mapOf("orderId" to "test-order"))
+        if (includeOrderStream) {
+            val orderStream = redisTemplate.opsForStream<String, String>()
+            orderStream.add("queue:order:${event.publicId}", mapOf("orderId" to "test-order"))
+        }
         event.zoneIds.forEach { zoneId ->
             redisTemplate.opsForValue().set("ZONE:$zoneId:stock", "1")
             redisTemplate.opsForSet().add("ZONE:$zoneId:claimed", "user-1")
         }
 
         return keys
+    }
+
+    private fun seedPendingOrderStream(event: CreatedEvent): String {
+        val orderStreamKey = "queue:order:${event.publicId}"
+        val streamOperations = redisTemplate.opsForStream<String, String>()
+
+        streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.read(
+            Consumer.from("order-workers", "consumer-1"),
+            StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
+        )
+
+        return orderStreamKey
+    }
+
+    private fun seedAcknowledgedOrderStream(event: CreatedEvent): String {
+        val orderStreamKey = "queue:order:${event.publicId}"
+        val streamOperations = redisTemplate.opsForStream<String, String>()
+        val recordId = streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
+
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.read(
+            Consumer.from("order-workers", "consumer-1"),
+            StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
+        )
+        streamOperations.acknowledge(orderStreamKey, "order-workers", recordId)
+
+        return orderStreamKey
     }
 
     private fun deleteRedisKeys(pattern: String) {
