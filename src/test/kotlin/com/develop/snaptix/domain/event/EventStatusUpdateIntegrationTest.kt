@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.event
 
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
+import com.develop.snaptix.domain.event.repository.EventRepository
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
 import org.assertj.core.api.Assertions.assertThat
@@ -38,6 +39,7 @@ import java.util.UUID
 class EventStatusUpdateIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val redisTemplate: StringRedisTemplate,
+    @Autowired private val eventRepository: EventRepository,
 ) {
     companion object {
         @Container
@@ -266,6 +268,23 @@ class EventStatusUpdateIntegrationTest(
             }
 
         assertThat(findEventStatus(eventId)).isEqualTo("UNKNOWN")
+    }
+
+    @Test
+    fun `조건부 상태 변경은 현재 상태가 일치하지 않으면 실패한다`() {
+        val eventId = insertEvent(status = EventStatus.PENDING)
+
+        val updatedRows =
+            transaction {
+                eventRepository.updateStatusByPublicId(
+                    publicId = eventId,
+                    currentStatus = EventStatus.ON_SALE,
+                    status = EventStatus.CLOSED,
+                )
+            }
+
+        assertThat(updatedRows).isZero()
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
     }
 
     @Test
