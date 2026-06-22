@@ -147,7 +147,8 @@ class CacheAsideAspectTest {
         @RedisCacheAside(keyPrefix = "event:info", ttlSeconds = 3600)
         open fun getEventInfo(publicId: String): FakeEventResponse = FakeEventResponse(id = publicId, name = "DB 결과")
 
-        open fun getWithoutAnnotation(publicId: String): FakeEventResponse = FakeEventResponse(id = publicId, name = "캐시 없음")
+        open fun getWithoutAnnotation(publicId: String): FakeEventResponse =
+            FakeEventResponse(id = publicId, name = "캐시 없음")
     }
 
     data class FakeEventResponse(

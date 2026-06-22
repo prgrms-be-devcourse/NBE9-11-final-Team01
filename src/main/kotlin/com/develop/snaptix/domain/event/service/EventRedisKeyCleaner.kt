@@ -79,14 +79,13 @@ class EventRedisKeyCleaner(
         )
     }
 
-    private fun EventRedisCleanupTarget.toImmediateCleanupKeys(): List<String> =
-        buildList {
-            add(eventInfoKey(eventPublicId))
-            zoneIds.forEach { zoneId ->
-                add(stockKey(zoneId))
-                add(claimedKey(zoneId))
-            }
+    private fun EventRedisCleanupTarget.toImmediateCleanupKeys(): List<String> = buildList {
+        add(eventInfoKey(eventPublicId))
+        zoneIds.forEach { zoneId ->
+            add(stockKey(zoneId))
+            add(claimedKey(zoneId))
         }
+    }
 
     private fun stockKey(zoneId: Long): String = "ZONE:$zoneId:stock"
 

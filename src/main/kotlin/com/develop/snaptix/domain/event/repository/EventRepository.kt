@@ -71,23 +71,21 @@ data class EventListZoneRecord(
 
 @Repository
 class EventRepository {
-    fun findByPublicId(publicId: String): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.publicId eq publicId }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findByPublicId(publicId: String): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.publicId eq publicId }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
-    fun findById(id: Long): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.id eq id }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findById(id: Long): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.id eq id }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
     fun insert(
         publicId: String,
@@ -96,17 +94,16 @@ class EventRepository {
         startTime: Instant,
         endTime: Instant,
         status: String,
-    ): Long =
-        transaction {
-            EventsTable.insert {
-                it[EventsTable.publicId] = publicId
-                it[EventsTable.name] = name
-                it[EventsTable.location] = location
-                it[EventsTable.startTime] = startTime
-                it[EventsTable.endTime] = endTime
-                it[EventsTable.status] = status
-            }[EventsTable.id]
-        }
+    ): Long = transaction {
+        EventsTable.insert {
+            it[EventsTable.publicId] = publicId
+            it[EventsTable.name] = name
+            it[EventsTable.location] = location
+            it[EventsTable.startTime] = startTime
+            it[EventsTable.endTime] = endTime
+            it[EventsTable.status] = status
+        }[EventsTable.id]
+    }
 
     fun insertEvent(
         publicId: String,
@@ -137,39 +134,37 @@ class EventRepository {
         publicId: String,
         currentStatus: EventStatus,
         status: EventStatus,
-    ): Int =
-        EventsTable.update({
-            (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
-        }) {
-            it[EventsTable.status] = status.name
-            it[EventsTable.updatedAt] = Instant.now()
-        }
+    ): Int = EventsTable.update({
+        (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
+    }) {
+        it[EventsTable.status] = status.name
+        it[EventsTable.updatedAt] = Instant.now()
+    }
 
-    fun findPublicEventPage(condition: EventListSearchCondition): EventListPageRecord =
-        transaction {
-            val where = publicEventWhere(condition)
-            val totalElements = EventsTable.selectAll().where(where).count()
-            val events =
-                EventsTable
-                    .selectAll()
-                    .where(where)
-                    .orderBy(condition.sortBy.toColumn() to condition.sortDir.toSortOrder())
-                    .limit(condition.size)
-                    .offset((condition.page * condition.size).toLong())
-                    .map { it.toListEventRecord() }
-            val zones =
-                events
-                    .map { it.id }
-                    .takeIf { it.isNotEmpty() }
-                    ?.let(::findZoneRecordsByEventIds)
-                    .orEmpty()
+    fun findPublicEventPage(condition: EventListSearchCondition): EventListPageRecord = transaction {
+        val where = publicEventWhere(condition)
+        val totalElements = EventsTable.selectAll().where(where).count()
+        val events =
+            EventsTable
+                .selectAll()
+                .where(where)
+                .orderBy(condition.sortBy.toColumn() to condition.sortDir.toSortOrder())
+                .limit(condition.size)
+                .offset((condition.page * condition.size).toLong())
+                .map { it.toListEventRecord() }
+        val zones =
+            events
+                .map { it.id }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::findZoneRecordsByEventIds)
+                .orEmpty()
 
-            EventListPageRecord(
-                events = events,
-                zones = zones,
-                totalElements = totalElements,
-            )
-        }
+        EventListPageRecord(
+            events = events,
+            zones = zones,
+            totalElements = totalElements,
+        )
+    }
 
     private fun publicEventWhere(condition: EventListSearchCondition): Op<Boolean> {
         var where: Op<Boolean> = EventsTable.status eq EventStatus.ON_SALE.name
@@ -187,47 +182,42 @@ class EventRepository {
         return where
     }
 
-    private fun findZoneRecordsByEventIds(eventIds: List<Long>): List<EventListZoneRecord> =
-        ZonesTable
-            .selectAll()
-            .where { ZonesTable.eventId inList eventIds }
-            .map {
-                EventListZoneRecord(
-                    eventId = it[ZonesTable.eventId],
-                    zoneId = it[ZonesTable.id],
-                    unitPrice = it[ZonesTable.unitPrice],
-                )
-            }
-
-    private fun EventListSortBy.toColumn() =
-        when (this) {
-            EventListSortBy.START_TIME -> EventsTable.startTime
-            EventListSortBy.CREATED_AT -> EventsTable.createdAt
-            EventListSortBy.NAME -> EventsTable.name
+    private fun findZoneRecordsByEventIds(eventIds: List<Long>): List<EventListZoneRecord> = ZonesTable
+        .selectAll()
+        .where { ZonesTable.eventId inList eventIds }
+        .map {
+            EventListZoneRecord(
+                eventId = it[ZonesTable.eventId],
+                zoneId = it[ZonesTable.id],
+                unitPrice = it[ZonesTable.unitPrice],
+            )
         }
 
-    private fun EventListSortDir.toSortOrder() =
-        when (this) {
-            EventListSortDir.ASC -> SortOrder.ASC
-            EventListSortDir.DESC -> SortOrder.DESC
-        }
+    private fun EventListSortBy.toColumn() = when (this) {
+        EventListSortBy.START_TIME -> EventsTable.startTime
+        EventListSortBy.CREATED_AT -> EventsTable.createdAt
+        EventListSortBy.NAME -> EventsTable.name
+    }
 
-    private fun ResultRow.toListEventRecord() =
-        EventListEventRecord(
-            id = this[EventsTable.id],
-            publicId = this[EventsTable.publicId],
-            name = this[EventsTable.name],
-            location = this[EventsTable.location],
-            startTime = this[EventsTable.startTime],
-            posterUrl = this[EventsTable.posterUrl],
-            status = EventStatus.valueOf(this[EventsTable.status]),
-        )
+    private fun EventListSortDir.toSortOrder() = when (this) {
+        EventListSortDir.ASC -> SortOrder.ASC
+        EventListSortDir.DESC -> SortOrder.DESC
+    }
 
-    private fun ResultRow.toRecord() =
-        EventRecord(
-            id = this[EventsTable.id],
-            publicId = this[EventsTable.publicId],
-            name = this[EventsTable.name],
-            status = this[EventsTable.status],
-        )
+    private fun ResultRow.toListEventRecord() = EventListEventRecord(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        location = this[EventsTable.location],
+        startTime = this[EventsTable.startTime],
+        posterUrl = this[EventsTable.posterUrl],
+        status = EventStatus.valueOf(this[EventsTable.status]),
+    )
+
+    private fun ResultRow.toRecord() = EventRecord(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        status = this[EventsTable.status],
+    )
 }

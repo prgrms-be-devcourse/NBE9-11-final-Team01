@@ -69,44 +69,40 @@ class EventQueryService(
         }
     }
 
-    private fun EventListEventRecord.toSummaryDto(zones: List<EventListZoneRecord>): EventSummaryDto =
-        EventSummaryDto(
-            eventId = publicId,
-            name = name,
-            location = location,
-            startTime = startTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
-            posterUrl = posterUrl,
-            status = status,
-            minPrice = zones.minOfOrNull { it.unitPrice } ?: 0,
-            isSoldOut = zones.isNotEmpty() && zones.all { it.isSoldOut() },
-        )
+    private fun EventListEventRecord.toSummaryDto(zones: List<EventListZoneRecord>): EventSummaryDto = EventSummaryDto(
+        eventId = publicId,
+        name = name,
+        location = location,
+        startTime = startTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
+        posterUrl = posterUrl,
+        status = status,
+        minPrice = zones.minOfOrNull { it.unitPrice } ?: 0,
+        isSoldOut = zones.isNotEmpty() && zones.all { it.isSoldOut() },
+    )
 
-    private fun EventListZoneRecord.isSoldOut(): Boolean =
-        try {
-            redisTemplate.opsForValue().get(stockKey(zoneId))?.toIntOrNull() == 0
-        } catch (exception: DataAccessException) {
-            logger.warn(exception) { "[EVENT_LIST_STOCK_READ_FAILED] zoneId=$zoneId" }
-            false
-        }
+    private fun EventListZoneRecord.isSoldOut(): Boolean = try {
+        redisTemplate.opsForValue().get(stockKey(zoneId))?.toIntOrNull() == 0
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_LIST_STOCK_READ_FAILED] zoneId=$zoneId" }
+        false
+    }
 
-    private fun String.toEventListSortBy(): EventListSortBy =
-        when (this) {
-            "startTime" -> EventListSortBy.START_TIME
-            "createdAt" -> EventListSortBy.CREATED_AT
-            "name" -> EventListSortBy.NAME
-            else ->
-                throw BusinessException(
-                    ErrorCode.INVALID_REQUEST_PARAMETER,
-                    "sortBy는 startTime, createdAt, name만 허용됩니다.",
-                )
-        }
+    private fun String.toEventListSortBy(): EventListSortBy = when (this) {
+        "startTime" -> EventListSortBy.START_TIME
+        "createdAt" -> EventListSortBy.CREATED_AT
+        "name" -> EventListSortBy.NAME
+        else ->
+            throw BusinessException(
+                ErrorCode.INVALID_REQUEST_PARAMETER,
+                "sortBy는 startTime, createdAt, name만 허용됩니다.",
+            )
+    }
 
-    private fun String.toEventListSortDir(): EventListSortDir =
-        when (lowercase()) {
-            "asc" -> EventListSortDir.ASC
-            "desc" -> EventListSortDir.DESC
-            else -> throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "sortDir은 asc 또는 desc만 허용됩니다.")
-        }
+    private fun String.toEventListSortDir(): EventListSortDir = when (lowercase()) {
+        "asc" -> EventListSortDir.ASC
+        "desc" -> EventListSortDir.DESC
+        else -> throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "sortDir은 asc 또는 desc만 허용됩니다.")
+    }
 
     private fun LocalDate.toKstStartInstant(): Instant = atStartOfDay(KST_ZONE_ID).toInstant()
 

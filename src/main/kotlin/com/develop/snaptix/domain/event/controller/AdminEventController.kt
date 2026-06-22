@@ -27,10 +27,9 @@ class AdminEventController(
         @Valid
         @RequestBody
         request: EventBulkCreateRequest,
-    ): ResponseEntity<EventBulkCreateResponse> =
-        ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(eventService.createEventWithZones(request))
+    ): ResponseEntity<EventBulkCreateResponse> = ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(eventService.createEventWithZones(request))
 
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{eventId}/status")
@@ -39,7 +38,6 @@ class AdminEventController(
         @Valid
         @RequestBody
         request: EventStatusUpdateRequest,
-    ): ResponseEntity<EventStatusUpdateResponse> =
-        ResponseEntity
-            .ok(eventService.updateEventStatus(eventId, request))
+    ): ResponseEntity<EventStatusUpdateResponse> = ResponseEntity
+        .ok(eventService.updateEventStatus(eventId, request))
 }

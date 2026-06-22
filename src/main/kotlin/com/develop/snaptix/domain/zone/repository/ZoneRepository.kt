@@ -33,18 +33,16 @@ class ZoneRepository {
         }
     }
 
-    fun findIdsByEventId(eventId: Long): List<Long> =
-        ZonesTable
-            .selectAll()
-            .where { ZonesTable.eventId eq eventId }
-            .map { it[ZonesTable.id] }
+    fun findIdsByEventId(eventId: Long): List<Long> = ZonesTable
+        .selectAll()
+        .where { ZonesTable.eventId eq eventId }
+        .map { it[ZonesTable.id] }
 
-    private fun ResultRow.toInsertResult(): ZoneInsertResult =
-        ZoneInsertResult(
-            id = this[ZonesTable.id],
-            publicId = this[ZonesTable.publicId],
-            name = this[ZonesTable.name],
-            unitPrice = this[ZonesTable.unitPrice],
-            totalCapacity = this[ZonesTable.totalCapacity],
-        )
+    private fun ResultRow.toInsertResult(): ZoneInsertResult = ZoneInsertResult(
+        id = this[ZonesTable.id],
+        publicId = this[ZonesTable.publicId],
+        name = this[ZonesTable.name],
+        unitPrice = this[ZonesTable.unitPrice],
+        totalCapacity = this[ZonesTable.totalCapacity],
+    )
 }

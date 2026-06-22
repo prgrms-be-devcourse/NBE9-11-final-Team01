@@ -68,17 +68,16 @@ class CacheAsideAspect(
         cacheAside: RedisCacheAside,
         traceId: String,
         start: Long,
-    ): GetResult =
-        try {
-            when (val json = redis.opsForValue().get(key)) {
-                null -> GetResult.Miss
-                else -> GetResult.Hit(json)
-            }
-        } catch (e: DataAccessException) {
-            if (!cacheAside.fallbackOnMiss) throw e
-            logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
-            GetResult.Fallback
+    ): GetResult = try {
+        when (val json = redis.opsForValue().get(key)) {
+            null -> GetResult.Miss
+            else -> GetResult.Hit(json)
         }
+    } catch (e: DataAccessException) {
+        if (!cacheAside.fallbackOnMiss) throw e
+        logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
+        GetResult.Fallback
+    }
 
     // ── HIT 처리 ──────────────────────────────────────────────────────
 

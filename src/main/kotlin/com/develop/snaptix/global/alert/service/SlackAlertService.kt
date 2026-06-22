@@ -114,11 +114,10 @@ class SlackAlertService(
     private fun mrkdwnField(
         label: String,
         value: String?,
-    ): Map<String, String>? =
-        value?.let {
-            mapOf(
-                "type" to "mrkdwn",
-                "text" to "*$label:*\n$it",
-            )
-        }
+    ): Map<String, String>? = value?.let {
+        mapOf(
+            "type" to "mrkdwn",
+            "text" to "*$label:*\n$it",
+        )
+    }
 }

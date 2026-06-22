@@ -31,12 +31,11 @@ class SseLeakPreventionTest {
         }
     }
 
-    private fun managerWith(subscriber: SseChannelSubscriber) =
-        InMemorySseConnectionManager(
-            ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> OwnershipResult.OWNED }),
-            stateReconstructors = mapOf("order" to StateReconstructor { null }),
-            subscriber = subscriber,
-        )
+    private fun managerWith(subscriber: SseChannelSubscriber) = InMemorySseConnectionManager(
+        ownershipCheckers = mapOf("order" to OwnershipChecker { _, _ -> OwnershipResult.OWNED }),
+        stateReconstructors = mapOf("order" to StateReconstructor { null }),
+        subscriber = subscriber,
+    )
 
     @Test
     fun `터미널 dispatch 후 활성 0 + 구독 해제`() {

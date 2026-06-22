@@ -69,10 +69,9 @@ class AuthController(
         @Valid
         @RequestBody
         request: SignUpRequest,
-    ): ResponseEntity<SignUpResponse> =
-        ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(authService.signUp(request))
+    ): ResponseEntity<SignUpResponse> = ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(authService.signUp(request))
 
     @Operation(
         summary = "로그인 및 JWT 쿠키 발급",

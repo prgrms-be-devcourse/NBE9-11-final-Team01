@@ -89,12 +89,11 @@ class EventRedisInitializer(
     private fun buildKeys(
         event: EventInsertResult,
         zones: List<ZoneInsertResult>,
-    ): List<String> =
-        buildList {
-            add(eventInfoKey(event.publicId))
-            add(orderStreamKey(event.publicId))
-            zones.forEach { add(stockKey(it.id)) }
-        }
+    ): List<String> = buildList {
+        add(eventInfoKey(event.publicId))
+        add(orderStreamKey(event.publicId))
+        zones.forEach { add(stockKey(it.id)) }
+    }
 
     private fun buildArguments(
         event: EventInsertResult,
@@ -116,15 +115,14 @@ class EventRedisInitializer(
         }
     }
 
-    private fun EventInsertResult.toCacheMap(request: EventBulkCreateRequest): Map<String, String> =
-        linkedMapOf(
-            "eventId" to publicId,
-            "name" to request.name,
-            "description" to request.description.orEmpty(),
-            "location" to request.location,
-            "startTime" to request.startTime.toInstant().toString(),
-            "endTime" to request.endTime.toInstant().toString(),
-            "status" to request.initialStatus.name,
-            "posterUrl" to request.posterUrl.orEmpty(),
-        )
+    private fun EventInsertResult.toCacheMap(request: EventBulkCreateRequest): Map<String, String> = linkedMapOf(
+        "eventId" to publicId,
+        "name" to request.name,
+        "description" to request.description.orEmpty(),
+        "location" to request.location,
+        "startTime" to request.startTime.toInstant().toString(),
+        "endTime" to request.endTime.toInstant().toString(),
+        "status" to request.initialStatus.name,
+        "posterUrl" to request.posterUrl.orEmpty(),
+    )
 }

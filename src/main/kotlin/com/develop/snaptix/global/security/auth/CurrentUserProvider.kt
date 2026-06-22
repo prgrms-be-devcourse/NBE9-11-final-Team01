@@ -9,11 +9,10 @@ import org.springframework.stereotype.Component
 class CurrentUserProvider {
     fun getCurrentUserId(): Long = getCurrentUser().userId
 
-    fun getCurrentUser(): AuthenticatedUser =
-        SecurityContextHolder
-            .getContext()
-            .authentication
-            ?.principal
-            ?.let { it as? AuthenticatedUser }
-            ?: throw BusinessException(ErrorCode.UNAUTHORIZED)
+    fun getCurrentUser(): AuthenticatedUser = SecurityContextHolder
+        .getContext()
+        .authentication
+        ?.principal
+        ?.let { it as? AuthenticatedUser }
+        ?: throw BusinessException(ErrorCode.UNAUTHORIZED)
 }
