@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.event.entity.EventsTable
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -16,6 +17,21 @@ data class EventRecord(
     val id: Long,
     val publicId: String,
     val name: String,
+    val status: String,
+)
+
+/**
+ * 재구축/드리프트 대상 이벤트 상세. (작업 명세서 6.2 — event:info 재구축 필드)
+ */
+data class EventDetail(
+    val id: Long,
+    val publicId: String,
+    val name: String,
+    val description: String?,
+    val location: String,
+    val startTime: Instant,
+    val endTime: Instant,
+    val posterUrl: String?,
     val status: String,
 )
 
@@ -37,6 +53,15 @@ class EventRepository {
                 .where { EventsTable.id eq id }
                 .singleOrNull()
                 ?.toRecord()
+        }
+
+    /** 활성 이벤트(`status != CLOSED`) 상세. 재구축·드리프트 대상. (작업 명세서 §6.2·§6.5) */
+    fun findActiveEvents(): List<EventDetail> =
+        transaction {
+            EventsTable
+                .selectAll()
+                .where { EventsTable.status neq EventStatus.CLOSED.name }
+                .map { it.toDetail() }
         }
 
     fun insert(
@@ -100,6 +125,19 @@ class EventRepository {
             id = this[EventsTable.id],
             publicId = this[EventsTable.publicId],
             name = this[EventsTable.name],
+            status = this[EventsTable.status],
+        )
+
+    private fun ResultRow.toDetail() =
+        EventDetail(
+            id = this[EventsTable.id],
+            publicId = this[EventsTable.publicId],
+            name = this[EventsTable.name],
+            description = this[EventsTable.description],
+            location = this[EventsTable.location],
+            startTime = this[EventsTable.startTime],
+            endTime = this[EventsTable.endTime],
+            posterUrl = this[EventsTable.posterUrl],
             status = this[EventsTable.status],
         )
 }
