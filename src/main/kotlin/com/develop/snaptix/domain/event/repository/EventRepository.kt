@@ -150,7 +150,7 @@ class EventRepository {
                 .where(where)
                 .orderBy(condition.sortBy.toColumn() to condition.sortDir.toSortOrder())
                 .limit(condition.size)
-                .offset((condition.page * condition.size).toLong())
+                .offset(condition.page.toLong() * condition.size.toLong())
                 .map { it.toListEventRecord() }
         val zones =
             events

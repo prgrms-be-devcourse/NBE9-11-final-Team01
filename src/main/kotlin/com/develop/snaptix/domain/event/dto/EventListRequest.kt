@@ -7,9 +7,11 @@ import org.springframework.format.annotation.DateTimeFormat
 import java.time.LocalDate
 
 private const val MAX_EVENT_LIST_PAGE_SIZE = 50L
+private const val MAX_EVENT_LIST_PAGE = 1_000L
 
 data class EventListRequest(
     @field:Min(0)
+    @field:Max(MAX_EVENT_LIST_PAGE)
     val page: Int = 0,
     @field:Min(1)
     @field:Max(MAX_EVENT_LIST_PAGE_SIZE)
