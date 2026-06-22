@@ -32,6 +32,10 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.mysql.MySQLContainer
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -285,6 +289,54 @@ class EventStatusUpdateIntegrationTest(
 
         assertThat(updatedRows).isZero()
         assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
+    }
+
+    @Test
+    fun `동시에 같은 상태 변경을 요청해도 하나의 조건부 UPDATE만 성공한다`() {
+        val eventId = insertEvent(status = EventStatus.PENDING)
+        val workerCount = 8
+        val executor = Executors.newFixedThreadPool(workerCount)
+        val readyLatch = CountDownLatch(workerCount)
+        val startLatch = CountDownLatch(1)
+        val doneLatch = CountDownLatch(workerCount)
+        val updatedRows = ConcurrentLinkedQueue<Int>()
+        val failures = ConcurrentLinkedQueue<Throwable>()
+
+        try {
+            repeat(workerCount) {
+                executor.submit {
+                    readyLatch.countDown()
+                    try {
+                        startLatch.await()
+                        val result =
+                            transaction {
+                                eventRepository.updateStatusByPublicId(
+                                    publicId = eventId,
+                                    currentStatus = EventStatus.PENDING,
+                                    status = EventStatus.ON_SALE,
+                                )
+                            }
+                        updatedRows.add(result)
+                    } catch (exception: Throwable) {
+                        failures.add(exception)
+                    } finally {
+                        doneLatch.countDown()
+                    }
+                }
+            }
+
+            assertThat(readyLatch.await(5, TimeUnit.SECONDS)).isTrue()
+            startLatch.countDown()
+            assertThat(doneLatch.await(10, TimeUnit.SECONDS)).isTrue()
+        } finally {
+            executor.shutdownNow()
+        }
+
+        assertThat(failures).isEmpty()
+        assertThat(updatedRows).hasSize(workerCount)
+        assertThat(updatedRows.count { it == 1 }).isEqualTo(1)
+        assertThat(updatedRows.count { it == 0 }).isEqualTo(workerCount - 1)
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.ON_SALE.name)
     }
 
     @Test
