@@ -21,21 +21,20 @@ class RedisCircuitBreakerAspect(
     private val circuitBreaker = circuitBreakerRegistry.circuitBreaker("redis")
 
     @Around("@annotation(com.develop.snaptix.global.aop.annotation.RedisCircuitBreaker)")
-    fun around(joinPoint: ProceedingJoinPoint): Any? =
-        try {
-            circuitBreaker.executeCheckedSupplier { joinPoint.proceed() }
-        } catch (e: CallNotPermittedException) {
-            logger.atWarn {
-                message = "Circuit breaker is OPEN, rejecting request"
-                cause = e
-                payload =
-                    mapOf(
-                        "action" to "CB_STATE_CHECK",
-                        "state" to circuitBreaker.state.name,
-                    )
-            }
-            throw RedisUnavailableException()
+    fun around(joinPoint: ProceedingJoinPoint): Any? = try {
+        circuitBreaker.executeCheckedSupplier { joinPoint.proceed() }
+    } catch (e: CallNotPermittedException) {
+        logger.atWarn {
+            message = "Circuit breaker is OPEN, rejecting request"
+            cause = e
+            payload =
+                mapOf(
+                    "action" to "CB_STATE_CHECK",
+                    "state" to circuitBreaker.state.name,
+                )
         }
+        throw RedisUnavailableException()
+    }
     // DataAccessException은 executeCheckedSupplier가 CB에 실패로 기록한 뒤 그대로 재전파
     // → 하위 Aspect(RateLimit, Idempotency)의 catch (e: DataAccessException)이 처리
 }

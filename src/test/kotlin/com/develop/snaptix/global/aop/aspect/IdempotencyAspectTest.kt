@@ -6,6 +6,7 @@ import com.develop.snaptix.global.aop.annotation.Idempotent
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.redis.IdempotencyConflictException
+import com.develop.snaptix.global.redis.script.COMPARE_AND_DELETE_SCRIPT
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
@@ -24,6 +25,7 @@ import org.springframework.dao.QueryTimeoutException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import org.springframework.data.redis.core.script.DefaultRedisScript
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Duration
@@ -39,6 +41,10 @@ class IdempotencyAspectTest {
     private lateinit var aspect: IdempotencyAspect
     private lateinit var testService: TestService
 
+    // RedisScriptConfig가 등록하는 빈과 동일한 실제 스크립트를 주입한다.
+    private val compareAndDeleteScript: RedisScript<Long> =
+        DefaultRedisScript(COMPARE_AND_DELETE_SCRIPT, Long::class.java)
+
     private val userId = 1L
     private val orderId = "order-uuid-1234"
     private val eventId = "event-uuid-5678"
@@ -46,7 +52,7 @@ class IdempotencyAspectTest {
 
     @BeforeEach
     fun setUp() {
-        aspect = IdempotencyAspect(redis)
+        aspect = IdempotencyAspect(redis, compareAndDeleteScript)
         every { redis.opsForValue() } returns valueOperations
 
         testService = proxyOf<TestService>(TestServiceImpl())
@@ -155,14 +161,14 @@ class IdempotencyAspectTest {
         fun `proceed 예외 발생 시 compare-and-delete가 호출된다`() {
             val failingService = proxyOf<TestService>(FailingTestServiceImpl())
             every { valueOperations.setIfAbsent(any(), any(), any<Duration>()) } returns true
-            every { redis.execute(any<DefaultRedisScript<Long>>(), any<List<String>>(), any()) } returns 1L
+            every { redis.execute(any<RedisScript<Long>>(), any<List<String>>(), any()) } returns 1L
 
             assertThrows<IllegalStateException> {
                 failingService.enqueue(request())
             }
 
             verify(exactly = 1) {
-                redis.execute(any<DefaultRedisScript<Long>>(), listOf(expectedKey), orderId)
+                redis.execute(any<RedisScript<Long>>(), listOf(expectedKey), orderId)
             }
         }
 
@@ -170,7 +176,7 @@ class IdempotencyAspectTest {
         fun `proceed 예외는 그대로 다시 던져진다`() {
             val failingService = proxyOf<TestService>(FailingTestServiceImpl())
             every { valueOperations.setIfAbsent(any(), any(), any<Duration>()) } returns true
-            every { redis.execute(any<DefaultRedisScript<Long>>(), any<List<String>>(), any()) } returns 1L
+            every { redis.execute(any<RedisScript<Long>>(), any<List<String>>(), any()) } returns 1L
 
             val ex =
                 assertThrows<IllegalStateException> {
@@ -192,7 +198,7 @@ class IdempotencyAspectTest {
 
             every { valueOperations.setIfAbsent(any(), any(), any<Duration>()) } returns true
             every {
-                redis.execute(any<DefaultRedisScript<Long>>(), any<List<String>>(), capture(capturedArgs))
+                redis.execute(any<RedisScript<Long>>(), any<List<String>>(), capture(capturedArgs))
             } returns 0L // 불일치 — 타 주문이 키 재점유 (DEL 안 함)
 
             runCatching { failingService.enqueue(request(orderId = orderId)) }
@@ -207,7 +213,7 @@ class IdempotencyAspectTest {
 
             every { valueOperations.setIfAbsent(any(), any(), any<Duration>()) } returns true
             every {
-                redis.execute(any<DefaultRedisScript<Long>>(), capture(capturedKeys), any())
+                redis.execute(any<RedisScript<Long>>(), capture(capturedKeys), any())
             } returns 1L
 
             runCatching { failingService.enqueue(request()) }

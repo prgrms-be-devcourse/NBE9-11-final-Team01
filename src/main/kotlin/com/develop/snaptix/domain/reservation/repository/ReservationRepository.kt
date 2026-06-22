@@ -16,18 +16,17 @@ import org.springframework.stereotype.Repository
  */
 @Repository
 class ReservationRepository : ReservationQuery {
-    override fun findByOrderId(orderId: String): ReservationView? =
-        transaction {
-            ReservationsTable
-                .selectAll()
-                .where { ReservationsTable.orderId eq orderId }
-                .limit(1)
-                .map { row ->
-                    ReservationView(
-                        userId = row[ReservationsTable.userId],
-                        status = ReservationStatus.valueOf(row[ReservationsTable.status]),
-                        createdAt = row[ReservationsTable.createdAt],
-                    )
-                }.singleOrNull()
-        }
+    override fun findByOrderId(orderId: String): ReservationView? = transaction {
+        ReservationsTable
+            .selectAll()
+            .where { ReservationsTable.orderId eq orderId }
+            .limit(1)
+            .map { row ->
+                ReservationView(
+                    userId = row[ReservationsTable.userId],
+                    status = ReservationStatus.valueOf(row[ReservationsTable.status]),
+                    createdAt = row[ReservationsTable.createdAt],
+                )
+            }.singleOrNull()
+    }
 }
