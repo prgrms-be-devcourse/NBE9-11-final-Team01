@@ -7,7 +7,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.or
-import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
@@ -24,7 +24,7 @@ import java.time.Instant
 class ReservationRepository : ReservationQuery {
     override fun findByOrderId(orderId: String): ReservationView? = transaction {
         ReservationsTable
-            .selectAll()
+            .select(ReservationsTable.userId, ReservationsTable.status, ReservationsTable.createdAt)
             .where { ReservationsTable.orderId eq orderId }
             .limit(1)
             .map { row ->
@@ -36,13 +36,20 @@ class ReservationRepository : ReservationQuery {
             }.singleOrNull()
     }
 
-    /** zoneId → 유효 점유 수(이벤트 한정). 드리프트·재구축 산정 공통. */
+    /**
+     * zoneId → 유효 점유 수. **희소(sparse) Map** — 점유가 0인 zone은 키가 없다.
+     * 계약: 정산 기준은 항상 이벤트의 **전체 zone 집합**(ZoneRepository.findByEventId)이며,
+     *      소비자는 zone 집합을 순회하며 `map[zoneId] ?: 0`으로 조회한다.
+     *      또한 본 메서드는 **호출자의 스냅샷 트랜잭션 안에서** 호출되어야 한다(일관 스냅샷, Story 13.2/13.4).
+     * TODO(#146): zoneId만 projection 후 코틀린 카운트 → SQL `COUNT(*) GROUP BY zone_id`로 전환.
+     * 본 메서드는 reservations만 집계하며 zone 목록을 알지 못한다(관심사 분리).
+     */
     fun countOccupiedByZone(
         eventId: Long,
         holdCutoff: Instant,
     ): Map<Long, Int> = transaction {
         ReservationsTable
-            .selectAll()
+            .select(ReservationsTable.zoneId)
             .where {
                 (ReservationsTable.eventId eq eventId) and isOccupied(holdCutoff)
             }.map { it[ReservationsTable.zoneId] }
@@ -50,10 +57,10 @@ class ReservationRepository : ReservationQuery {
             .eachCount()
     }
 
-    /** 만료 PENDING(`status=PENDING_PAYMENT AND created_at < cutoff`). */
+    /** 만료 PENDING. id·orderId·zoneId 3컬럼만 projection. */
     fun findExpiredPending(cutoff: Instant): List<ExpiredReservation> = transaction {
         ReservationsTable
-            .selectAll()
+            .select(ReservationsTable.id, ReservationsTable.orderId, ReservationsTable.zoneId)
             .where {
                 (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
                     (ReservationsTable.createdAt less cutoff)
@@ -66,7 +73,7 @@ class ReservationRepository : ReservationQuery {
             }
     }
 
-    /** 조건부 UPDATE → RELEASED. affected rows(0/1) 반환. 동시 결제 성공 경쟁 제어. */
+    /** 조건부 UPDATE → RELEASED. affected rows(0/1) 반환. */
     fun releaseIfPending(id: Long): Int = transaction {
         ReservationsTable.update(
             {
@@ -79,13 +86,17 @@ class ReservationRepository : ReservationQuery {
         }
     }
 
-    /** 유효 PENDING의 orderId를 zoneId별로. claimed 재구축에 사용. */
+    /**
+     * 유효 PENDING의 orderId를 zoneId별로. **희소 Map**(유효 PENDING 0 zone 키 부재).
+     * 값(orderId 목록)이 필요해 집계 불가 → zoneId·orderId **2컬럼만** projection.
+     * 호출자의 스냅샷 트랜잭션 안에서 호출되어야 한다.
+     */
     fun findValidPendingOrderIds(
         eventId: Long,
         holdCutoff: Instant,
     ): Map<Long, List<String>> = transaction {
         ReservationsTable
-            .selectAll()
+            .select(ReservationsTable.zoneId, ReservationsTable.orderId)
             .where {
                 (ReservationsTable.eventId eq eventId) and
                     (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and

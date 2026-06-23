@@ -3,7 +3,7 @@ spring:
     name: snaptix
 
   profiles:
-    active: dev
+    active: local  # 운영은 app.env로 SPRING_PROFILES_ACTIVE=dev주입
     include: secret
 
   datasource:

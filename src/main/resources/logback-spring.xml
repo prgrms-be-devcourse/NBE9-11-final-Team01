@@ -18,7 +18,7 @@
     </springProfile>
 
     <!-- 운영 환경: JSON 구조화 로그 출력 -->
-    <springProfile name="prod, staging">
+    <springProfile name="dev, prod, staging">
         <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <!-- MDC의 traceId를 JSON 필드로 자동 포함 -->
