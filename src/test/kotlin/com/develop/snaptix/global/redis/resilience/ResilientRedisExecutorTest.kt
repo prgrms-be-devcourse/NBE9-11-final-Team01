@@ -1,3 +1,4 @@
+// 위치: src/test/kotlin/com/develop/snaptix/global/redis/resilience/ResilientRedisExecutorTest.kt
 package com.develop.snaptix.global.redis.resilience
 
 import com.develop.snaptix.global.aop.type.RedisAction
@@ -22,6 +23,14 @@ class ResilientRedisExecutorTest {
 
         assertThat(result).isEqualTo("OK")
         verify(exactly = 1) { actionLogger.success(RedisAction.IDEMPOTENCY_CHECK, any(), "OK") }
+    }
+
+    @Test
+    fun `null 결과도 NPE 없이 그대로 반환한다`() {
+        val result = executor.execute<String?>(RedisAction.IDEMPOTENCY_CHECK) { null }
+
+        assertThat(result).isNull()
+        verify(exactly = 1) { actionLogger.success(RedisAction.IDEMPOTENCY_CHECK, any(), isNull()) }
     }
 
     @Test

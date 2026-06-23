@@ -1,3 +1,4 @@
+// 위치: src/main/kotlin/com/develop/snaptix/global/redis/resilience/ResilientRedisExecutor.kt
 package com.develop.snaptix.global.redis.resilience
 
 // ⚠️ 아래 2개 import는 프로젝트 실제 패키지에 맞게 확인하세요.
@@ -20,6 +21,10 @@ import org.springframework.stereotype.Component
  * - Redis 오류    → failure 로그 후 그대로 재전파 (fail-open/closed 판단은 호출부 책임)
  *
  * 기존 `redis` 서킷 인스턴스를 그대로 사용하므로 AOP 서킷과 상태를 공유한다.
+ *
+ * 주의: resilience4j `executeSupplier`는 Java 플랫폼 타입을 반환해 Kotlin이 non-null 단정을
+ * 삽입한다(null 결과 시 NPE). 그래서 결과를 [Captured] 래퍼로 감싸 통과시키고 밖에서 푼다.
+ * (예: `ownerOf`가 키 부재 시 null을 반환하는 경우)
  */
 @Component
 class ResilientRedisExecutor(
@@ -34,9 +39,9 @@ class ResilientRedisExecutor(
     ): T {
         val startedAt = System.nanoTime()
         return try {
-            val result = circuitBreaker.executeSupplier { block() }
-            actionLogger.success(action, elapsedMs(startedAt), result)
-            result
+            val captured = circuitBreaker.executeSupplier { Captured(block()) }
+            actionLogger.success(action, elapsedMs(startedAt), captured.value)
+            captured.value
         } catch (e: CallNotPermittedException) {
             actionLogger.circuitOpen(action, e)
             throw RedisUnavailableException()
@@ -47,6 +52,11 @@ class ResilientRedisExecutor(
     }
 
     private fun elapsedMs(startedAt: Long): Long = (System.nanoTime() - startedAt) / NANOS_PER_MILLI
+
+    /** executeSupplier가 null을 거부하므로 결과를 감싸 통과시키는 non-null 홀더. */
+    private class Captured<T>(
+        val value: T,
+    )
 
     companion object {
         private const val NANOS_PER_MILLI = 1_000_000L
