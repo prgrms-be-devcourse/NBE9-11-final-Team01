@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.event.controller
 
 import com.develop.snaptix.domain.event.dto.EventListRequest
+import com.develop.snaptix.domain.event.dto.EventListSwaggerResponse
 import com.develop.snaptix.domain.event.dto.EventSummaryDto
 import com.develop.snaptix.domain.event.service.EventQueryService
 import com.develop.snaptix.global.aop.annotation.RateLimit
@@ -36,7 +37,7 @@ class EventController(
             ApiResponse(
                 responseCode = "200",
                 description = "이벤트 목록 조회 성공",
-                content = [Content(schema = Schema(implementation = PageResponse::class))],
+                content = [Content(schema = Schema(implementation = EventListSwaggerResponse::class))],
             ),
             ApiResponse(
                 responseCode = "400",
