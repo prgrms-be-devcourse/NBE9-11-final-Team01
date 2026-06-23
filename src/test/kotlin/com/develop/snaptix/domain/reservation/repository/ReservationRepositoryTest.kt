@@ -11,7 +11,6 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 
-
 @SpringBootTest
 class ReservationRepositoryTest(
     @Autowired private val reservationRepository: ReservationRepository,
@@ -27,14 +26,17 @@ class ReservationRepositoryTest(
         val zoneA = ReconcileFixtures.insertZone(event.eventId, 100)
         val zoneB = ReconcileFixtures.insertZone(event.eventId, 50) // 예약 0
         ReconcileFixtures.insertReservation(
-            userId, event.eventId, zoneA.zoneId,
-            ReservationStatus.CONFIRMED, now.minus(1, ChronoUnit.MINUTES),
+            userId,
+            event.eventId,
+            zoneA.zoneId,
+            ReservationStatus.CONFIRMED,
+            now.minus(1, ChronoUnit.MINUTES),
         )
 
         val occupied = reservationRepository.countOccupiedByZone(event.eventId, now.minus(5, ChronoUnit.MINUTES))
 
         assertThat(occupied[zoneA.zoneId]).isEqualTo(1)
-        assertThat(occupied).doesNotContainKey(zoneB.zoneId)            // ← 0 점유 zone 키 부재
+        assertThat(occupied).doesNotContainKey(zoneB.zoneId) // ← 0 점유 zone 키 부재
         assertThat(occupied.getOrDefault(zoneB.zoneId, 0)).isEqualTo(0) // ← 소비자 계약(?: 0)
     }
 
@@ -53,15 +55,21 @@ class ReservationRepositoryTest(
         // 유효 PENDING 3건 (윈도우 내: now-1분 >= cutoff)
         repeat(3) {
             ReconcileFixtures.insertReservation(
-                userId, event.eventId, zone.zoneId,
-                ReservationStatus.PENDING_PAYMENT, now.minus(1, ChronoUnit.MINUTES),
+                userId,
+                event.eventId,
+                zone.zoneId,
+                ReservationStatus.PENDING_PAYMENT,
+                now.minus(1, ChronoUnit.MINUTES),
             )
         }
         // 만료 PENDING 4건 (윈도우 밖: now-10분 < cutoff) → 제외돼야 함
         repeat(4) {
             ReconcileFixtures.insertReservation(
-                userId, event.eventId, zone.zoneId,
-                ReservationStatus.PENDING_PAYMENT, now.minus(10, ChronoUnit.MINUTES),
+                userId,
+                event.eventId,
+                zone.zoneId,
+                ReservationStatus.PENDING_PAYMENT,
+                now.minus(10, ChronoUnit.MINUTES),
             )
         }
 
