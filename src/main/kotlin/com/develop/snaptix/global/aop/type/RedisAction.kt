@@ -1,3 +1,4 @@
+// 위치: src/main/kotlin/com/develop/snaptix/global/aop/type/RedisAction.kt
 package com.develop.snaptix.global.aop.type
 
 /**
@@ -8,6 +9,7 @@ package com.develop.snaptix.global.aop.type
  *   - XREADGROUP / XACK / MINID_TRIM / CLAIM_REPROCESS 추가 (Stream Consumer Group)
  *   - INGEST_BACKPRESSURE / COMPENSATE_STOCK / STOCK_DRIFT_FIX 추가 (v3.1 신규)
  *   - CACHE_INVALIDATE 추가 (event:info 무효화 추적용)
+ *   - OWNERSHIP 추가 (order:owner PENDING 단계 소유권 — ISSUE-08)
  */
 enum class RedisAction {
     // ── 주문 큐 (Stream) ──────────────────────────────────────────────
@@ -59,6 +61,11 @@ enum class RedisAction {
 
     /** webhook:processed:{orderId} SET NX */
     WEBHOOK_IDEMPOTENCY,
+
+    // ── 소유권 ────────────────────────────────────────────────────────
+
+    /** order:owner:{orderId} SET/GET/DEL — PENDING 단계 주문 소유권 */
+    OWNERSHIP,
 
     // ── 정합성 배치 ───────────────────────────────────────────────────
 
