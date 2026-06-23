@@ -1,4 +1,3 @@
-// 위치: src/main/kotlin/com/develop/snaptix/global/aop/type/RedisAction.kt
 package com.develop.snaptix.global.aop.type
 
 /**
@@ -10,6 +9,7 @@ package com.develop.snaptix.global.aop.type
  *   - INGEST_BACKPRESSURE / COMPENSATE_STOCK / STOCK_DRIFT_FIX 추가 (v3.1 신규)
  *   - CACHE_INVALIDATE 추가 (event:info 무효화 추적용)
  *   - OWNERSHIP 추가 (order:owner PENDING 단계 소유권 — ISSUE-08)
+ *   - PAYMENT_APPROVE 추가 (payment:approve 이중 클릭 가드 — ISSUE-09)
  */
 enum class RedisAction {
     // ── 주문 큐 (Stream) ──────────────────────────────────────────────
@@ -61,6 +61,11 @@ enum class RedisAction {
 
     /** webhook:processed:{orderId} SET NX */
     WEBHOOK_IDEMPOTENCY,
+
+    // ── 결제 가드 ─────────────────────────────────────────────────────
+
+    /** payment:approve:{orderId} SET NX — 결제 승인 이중 클릭 차단 */
+    PAYMENT_APPROVE,
 
     // ── 소유권 ────────────────────────────────────────────────────────
 

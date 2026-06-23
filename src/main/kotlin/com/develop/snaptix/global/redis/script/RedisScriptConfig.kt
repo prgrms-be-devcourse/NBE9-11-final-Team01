@@ -27,4 +27,8 @@ class RedisScriptConfig {
     /** 멱등 키 compare-and-delete 스크립트. 반환: 1 / 0 */
     @Bean
     fun compareAndDeleteScript(): RedisScript<Long> = DefaultRedisScript(COMPARE_AND_DELETE_SCRIPT, Long::class.java)
+
+    /** Rate Limit 카운터(INCR + 최초 EXPIRE). 반환: 현재 카운트 */
+    @Bean
+    fun rateLimitScript(): RedisScript<Long> = DefaultRedisScript(RATE_LIMIT_SCRIPT, Long::class.java)
 }
