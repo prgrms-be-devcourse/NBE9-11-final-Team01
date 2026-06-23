@@ -1,15 +1,14 @@
 package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.dto.EventListRequest
-import com.develop.snaptix.domain.event.dto.EventListResponse
 import com.develop.snaptix.domain.event.dto.EventSummaryDto
-import com.develop.snaptix.domain.event.dto.PageMetadataDto
 import com.develop.snaptix.domain.event.repository.EventListEventRecord
 import com.develop.snaptix.domain.event.repository.EventListSearchCondition
 import com.develop.snaptix.domain.event.repository.EventListSortBy
 import com.develop.snaptix.domain.event.repository.EventListSortDir
 import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.global.common.dto.PageResponse
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -29,7 +28,7 @@ class EventQueryService(
 ) {
     private val logger = KotlinLogging.logger {}
 
-    fun getEvents(request: EventListRequest): EventListResponse {
+    fun getEvents(request: EventListRequest): PageResponse<EventSummaryDto> {
         validateDateRange(request.startDate, request.endDate)
 
         val condition =
@@ -45,18 +44,14 @@ class EventQueryService(
         val page = eventRepository.findPublicEventPage(condition)
         val zonesByEventId = page.zones.groupBy { it.eventId }
 
-        return EventListResponse(
+        return PageResponse.of(
             content =
                 page.events.map { event ->
                     event.toSummaryDto(zonesByEventId[event.id].orEmpty())
                 },
-            pageable =
-                PageMetadataDto(
-                    pageNumber = request.page,
-                    pageSize = request.size,
-                    totalElements = page.totalElements,
-                    totalPages = page.totalElements.toTotalPages(request.size),
-                ),
+            pageNumber = request.page,
+            pageSize = request.size,
+            totalElements = page.totalElements,
         )
     }
 
@@ -105,14 +100,6 @@ class EventQueryService(
     }
 
     private fun LocalDate.toKstStartInstant(): Instant = atStartOfDay(KST_ZONE_ID).toInstant()
-
-    private fun Long.toTotalPages(size: Int): Int {
-        if (this == 0L) {
-            return 0
-        }
-
-        return ((this + size - 1) / size).toInt()
-    }
 
     private fun stockKey(zoneId: Long): String = "ZONE:$zoneId:stock"
 }
