@@ -9,8 +9,12 @@ import com.develop.snaptix.domain.event.repository.EventListSortBy
 import com.develop.snaptix.domain.event.repository.EventListSortDir
 import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
+import com.develop.snaptix.global.redis.gateway.StockRedisGateway
+import com.develop.snaptix.global.resilience.ReconcileProperties
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -25,9 +29,20 @@ import java.time.LocalDate
 
 class EventQueryServiceTest {
     private val eventRepository = mockk<EventRepository>()
+    private val reservationRepository = mockk<ReservationRepository>()
     private val valueOperations = mockk<ValueOperations<String, String>>()
     private val redisTemplate = mockk<StringRedisTemplate>()
-    private val eventQueryService = EventQueryService(eventRepository, redisTemplate)
+    private val eventCacheRedisGateway = mockk<EventCacheRedisGateway>()
+    private val stockRedisGateway = mockk<StockRedisGateway>()
+    private val eventQueryService =
+        EventQueryService(
+            eventRepository = eventRepository,
+            reservationRepository = reservationRepository,
+            redisTemplate = redisTemplate,
+            eventCacheRedisGateway = eventCacheRedisGateway,
+            stockRedisGateway = stockRedisGateway,
+            reconcileProperties = ReconcileProperties(),
+        )
 
     @Test
     fun `시작일이 종료일보다 이후이면 예외가 발생한다`() {
