@@ -124,10 +124,14 @@ class EventRepository {
     }
 
     fun findEventDetailByPublicId(publicId: String): EventDetailQueryResult? = transaction {
+        val publicStatuses = PUBLIC_DETAIL_STATUSES.map { it.name }
+
         EventsTable
             .selectAll()
-            .where { EventsTable.publicId eq publicId }
-            .singleOrNull()
+            .where {
+                (EventsTable.publicId eq publicId) and
+                    (EventsTable.status inList publicStatuses)
+            }.singleOrNull()
             ?.toDetail()
             ?.let { event ->
                 EventDetailQueryResult(
@@ -254,6 +258,10 @@ class EventRepository {
                 totalCapacity = it[ZonesTable.totalCapacity],
             )
         }
+
+    private companion object {
+        val PUBLIC_DETAIL_STATUSES = setOf(EventStatus.ON_SALE, EventStatus.SOLD_OUT)
+    }
 
     private fun EventListSortBy.toColumn() = when (this) {
         EventListSortBy.START_TIME -> EventsTable.startTime

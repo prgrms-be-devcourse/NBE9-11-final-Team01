@@ -110,7 +110,38 @@ class EventDetailIntegrationTest(
             }
     }
 
-    private fun insertEventWithZones(): CreatedEvent = transaction {
+    @Test
+    fun `매진 상태 이벤트 상세는 조회할 수 있다`() {
+        val event = insertEventWithZones(status = EventStatus.SOLD_OUT)
+
+        mockMvc
+            .get("/api/v1/events/${event.publicId}")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.status") { value("SOLD_OUT") }
+            }
+    }
+
+    @Test
+    fun `공개되지 않은 이벤트 상세 조회는 404를 응답한다`() {
+        val pending = insertEventWithZones(status = EventStatus.PENDING)
+        val closed = insertEventWithZones(status = EventStatus.CLOSED)
+
+        assertEventNotFound(pending.publicId)
+        assertEventNotFound(closed.publicId)
+    }
+
+    private fun assertEventNotFound(eventId: String) {
+        mockMvc
+            .get("/api/v1/events/$eventId")
+            .andExpect {
+                status { isNotFound() }
+                jsonPath("$.code") { value(ErrorCode.EVENT_NOT_FOUND.code) }
+            }
+    }
+
+    private fun insertEventWithZones(status: EventStatus = EventStatus.ON_SALE): CreatedEvent = transaction {
         val eventPublicId = UUID.randomUUID().toString()
         val eventId =
             EventsTable.insert {
@@ -120,7 +151,7 @@ class EventDetailIntegrationTest(
                 it[EventsTable.location] = "올림픽공원 체조경기장"
                 it[EventsTable.startTime] = Instant.parse("2027-12-25T10:00:00Z")
                 it[EventsTable.endTime] = Instant.parse("2027-12-25T13:00:00Z")
-                it[EventsTable.status] = EventStatus.ON_SALE.name
+                it[EventsTable.status] = status.name
                 it[EventsTable.posterUrl] = "https://cdn.snaptix.kr/events/detail.jpg"
             }[EventsTable.id]
         val zones =
