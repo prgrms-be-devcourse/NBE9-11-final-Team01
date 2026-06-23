@@ -1,3 +1,4 @@
+// 위치: src/main/kotlin/com/develop/snaptix/global/redis/script/RedisScriptConfig.kt
 package com.develop.snaptix.global.redis.script
 
 import org.springframework.context.annotation.Bean
@@ -31,4 +32,8 @@ class RedisScriptConfig {
     /** Rate Limit 카운터(INCR + 최초 EXPIRE). 반환: 현재 카운트 */
     @Bean
     fun rateLimitScript(): RedisScript<Long> = DefaultRedisScript(RATE_LIMIT_SCRIPT, Long::class.java)
+
+    /** zone 재구축(stock SET + claimed 원자 덮어쓰기). 반환: 1 */
+    @Bean
+    fun rebuildZoneScript(): RedisScript<Long> = DefaultRedisScript(REBUILD_ZONE_SCRIPT, Long::class.java)
 }
