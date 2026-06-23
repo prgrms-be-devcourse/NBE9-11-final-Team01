@@ -1,9 +1,10 @@
 package com.develop.snaptix.domain.event.controller
 
 import com.develop.snaptix.domain.event.dto.EventListRequest
-import com.develop.snaptix.domain.event.dto.EventListResponse
+import com.develop.snaptix.domain.event.dto.EventSummaryDto
 import com.develop.snaptix.domain.event.service.EventQueryService
 import com.develop.snaptix.global.aop.annotation.RateLimit
+import com.develop.snaptix.global.common.dto.PageResponse
 import com.develop.snaptix.global.exception.ErrorResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -35,7 +36,7 @@ class EventController(
             ApiResponse(
                 responseCode = "200",
                 description = "이벤트 목록 조회 성공",
-                content = [Content(schema = Schema(implementation = EventListResponse::class))],
+                content = [Content(schema = Schema(implementation = PageResponse::class))],
             ),
             ApiResponse(
                 responseCode = "400",
@@ -50,5 +51,5 @@ class EventController(
         @Valid
         @ModelAttribute
         request: EventListRequest,
-    ): ResponseEntity<EventListResponse> = ResponseEntity.ok(eventQueryService.getEvents(request))
+    ): ResponseEntity<PageResponse<EventSummaryDto>> = ResponseEntity.ok(eventQueryService.getEvents(request))
 }
