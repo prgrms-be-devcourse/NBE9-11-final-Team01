@@ -1,7 +1,9 @@
 package com.develop.snaptix.global.aop.aspect
+
 import com.develop.snaptix.global.aop.annotation.RateLimit
 import com.develop.snaptix.global.aop.type.AspectOrder
 import com.develop.snaptix.global.exception.redis.RateLimitExceededException
+import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -9,77 +11,47 @@ import org.aspectj.lang.annotation.Aspect
 import org.slf4j.MDC
 import org.springframework.core.annotation.Order
 import org.springframework.dao.DataAccessException
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
 
+/**
+ * @RateLimit 메서드에 IP 기반 rate limit을 적용하는 Aspect.
+ *
+ * 실제 카운터 연산(INCR + 최초 EXPIRE 원자 Lua)은 [RateLimitRedisGateway]에 위임한다.
+ * 아스펙트는 IP 추출·한도 전달·차단 예외·fail-open 정책(경계)만 담당한다(메인 명세서 §4.5).
+ *
+ * 실행 순서: CB(1) → [RateLimit(2)] → Idempotency(3) → RedisLogging(4)
+ */
 @Aspect
 @Component
 @Order(AspectOrder.RATE_LIMIT)
 class RateLimitAspect(
-    private val redisTemplate: StringRedisTemplate,
+    private val rateLimitGateway: RateLimitRedisGateway,
 ) {
     private val logger = KotlinLogging.logger {}
-
-    // INCR 후 최초 호출이면 EXPIRE 설정 — 원자적 처리
-    private val rateLimitScript =
-        RedisScript.of(
-            """
-            local count = redis.call('INCR', KEYS[1])
-            if count == 1 then
-                redis.call('EXPIRE', KEYS[1], ARGV[1])
-            end
-            return count
-            """.trimIndent(),
-            Long::class.java,
-        )
 
     @Around("@annotation(rateLimit)")
     fun around(
         joinPoint: ProceedingJoinPoint,
         rateLimit: RateLimit,
     ): Any? {
-        val ip = extractIp()
-        val traceId = MDC.get("traceId") ?: "unknown"
-
-        checkLimit(
-            ip = ip,
-            traceId = traceId,
-            keySuffix = "sec",
-            ttlSeconds = 1L,
-            limit = rateLimit.limitPerSecond,
-            limitType = "PER_SECOND",
-        )
-        checkLimit(
-            ip = ip,
-            traceId = traceId,
-            keySuffix = "min",
-            ttlSeconds = 60L,
-            limit = rateLimit.limitPerMinute,
-            limitType = "PER_MINUTE",
-        )
-
+        enforceLimit(extractIp(), rateLimit.limitPerSecond, rateLimit.limitPerMinute)
         return joinPoint.proceed()
     }
 
-    private fun checkLimit(
+    /**
+     * IP 단위 rate limit 적용(게이트웨이 위임).
+     * DataAccessException 발생 시 fail-open(skip) — 서킷 OPEN은 상위 CB 아스펙트가 선차단.
+     */
+    private fun enforceLimit(
         ip: String,
-        traceId: String,
-        keySuffix: String,
-        ttlSeconds: Long,
-        limit: Int,
-        limitType: String,
+        limitPerSecond: Int,
+        limitPerMinute: Int,
     ) {
-        val key = "rate_limit:$ip:$keySuffix"
-        val count =
+        val result =
             try {
-                redisTemplate.execute(
-                    rateLimitScript,
-                    listOf(key),
-                    ttlSeconds.toString(),
-                ) ?: 0L
+                rateLimitGateway.hit(ip, limitPerSecond, limitPerMinute)
             } catch (e: DataAccessException) {
                 logger.atWarn {
                     message = "Redis unavailable, skipping rate limit"
@@ -87,32 +59,32 @@ class RateLimitAspect(
                     payload =
                         mapOf(
                             "action" to "RATE_LIMIT_CHECK",
-                            "traceId" to traceId,
+                            "result" to "SKIP_FAIL_OPEN",
                             "ip" to ip,
-                            "limitType" to limitType,
-                            "result" to "SKIP",
+                            "traceId" to traceId(),
                         )
                 }
-                return // 검사 스킵, joinPoint.proceed()로 진행
+                return
             }
 
-        if (count > limit) {
+        if (!result.allowed) {
+            val retryAfterSeconds = result.retryAfter?.seconds ?: 0L
             logger.atWarn {
                 message = "Rate limit exceeded"
                 payload =
                     mapOf(
                         "action" to "RATE_LIMIT_CHECK",
-                        "traceId" to traceId,
-                        "ip" to ip,
-                        "limitType" to limitType,
-                        "count" to count,
-                        "limit" to limit,
                         "result" to "BLOCKED",
+                        "ip" to ip,
+                        "retryAfterSeconds" to retryAfterSeconds,
+                        "traceId" to traceId(),
                     )
             }
-            throw RateLimitExceededException(retryAfterSeconds = ttlSeconds)
+            throw RateLimitExceededException(retryAfterSeconds = retryAfterSeconds)
         }
     }
+
+    private fun traceId(): String = MDC.get("traceId") ?: "unknown"
 
     private fun extractIp(): String {
         val request =
