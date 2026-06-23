@@ -1,3 +1,4 @@
+// 위치: src/test/kotlin/com/develop/snaptix/global/redis/gateway/StockRedisGatewayTest.kt
 package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
@@ -113,11 +114,58 @@ class StockRedisGatewayTest {
         assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(INITIAL_STOCK.toLong())
     }
 
+    @Test
+    fun `get은 키 존재 시 Int, 부재 시 null`() {
+        assertThat(gateway.get(ZONE_ID)).isNull()
+
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+
+        assertThat(gateway.get(ZONE_ID)).isEqualTo(SMALL_STOCK)
+    }
+
+    @Test
+    fun `correctStock은 stock만 SET하고 claimed는 건드리지 않는다`() {
+        redis.opsForValue().set(stockKey, "3")
+        redis.opsForSet().add(claimedKey, "existing-order")
+
+        gateway.correctStock(ZONE_ID, SMALL_STOCK)
+
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo(SMALL_STOCK.toString())
+        assertThat(redis.opsForSet().isMember(claimedKey, "existing-order")).isEqualTo(true)
+    }
+
+    @Test
+    fun `rebuild는 stock SET과 claimed 덮어쓰기를 수행한다`() {
+        redis.opsForValue().set(stockKey, "999")
+        redis.opsForSet().add(claimedKey, "old-order")
+        val o1 = UUID.randomUUID()
+        val o2 = UUID.randomUUID()
+
+        gateway.rebuild(ZONE_ID, REBUILD_STOCK, listOf(o1, o2))
+
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo(REBUILD_STOCK.toString())
+        assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(2L)
+        assertThat(redis.opsForSet().isMember(claimedKey, o1.toString())).isEqualTo(true)
+        assertThat(redis.opsForSet().isMember(claimedKey, o2.toString())).isEqualTo(true)
+        assertThat(redis.opsForSet().isMember(claimedKey, "old-order")).isEqualTo(false)
+    }
+
+    @Test
+    fun `rebuild는 claimed가 비어도 stock SET 후 claimed를 비운다`() {
+        redis.opsForSet().add(claimedKey, "old-order")
+
+        gateway.rebuild(ZONE_ID, REBUILD_STOCK, emptyList())
+
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo(REBUILD_STOCK.toString())
+        assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(0L)
+    }
+
     companion object {
         private const val REDIS_PORT = 6379
         private const val ZONE_ID = 1L
         private const val SMALL_STOCK = 5
         private const val INITIAL_STOCK = 100
+        private const val REBUILD_STOCK = 60
         private const val CONCURRENT_ATTEMPTS = 1000
         private const val THREAD_POOL_SIZE = 32
         private const val AWAIT_SECONDS = 30L
