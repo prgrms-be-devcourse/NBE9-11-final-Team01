@@ -138,6 +138,7 @@ class EventQueryService(
         )
 
     private fun List<EventDetailZoneRecord>.toStockInfo(eventId: Long): List<ZoneStockInfo> {
+        val stockByZoneId = readCurrentStocks(map { it.id })
         val fallbackOccupiedByZone by lazy {
             reservationRepository.countOccupiedByZone(
                 eventId = eventId,
@@ -146,11 +147,17 @@ class EventQueryService(
         }
 
         return map { zone ->
-            zone.toStockInfo(fallbackOccupiedByZone)
+            zone.toStockInfo(
+                currentStock = stockByZoneId[zone.id],
+                fallbackOccupiedByZone = fallbackOccupiedByZone,
+            )
         }
     }
 
-    private fun EventDetailZoneRecord.toStockInfo(fallbackOccupiedByZone: Map<Long, Int>): ZoneStockInfo {
+    private fun EventDetailZoneRecord.toStockInfo(
+        currentStock: Int?,
+        fallbackOccupiedByZone: Map<Long, Int>,
+    ): ZoneStockInfo {
         val fallbackStock = (totalCapacity - fallbackOccupiedByZone.getOrDefault(id, 0)).coerceAtLeast(0)
 
         return ZoneStockInfo(
@@ -158,18 +165,18 @@ class EventQueryService(
             name = name,
             unitPrice = unitPrice,
             totalCapacity = totalCapacity,
-            currentStock = readCurrentStock(id) ?: fallbackStock,
+            currentStock = currentStock ?: fallbackStock,
         )
     }
 
-    private fun readCurrentStock(zoneId: Long): Int? = try {
-        stockRedisGateway.get(zoneId)
+    private fun readCurrentStocks(zoneIds: List<Long>): Map<Long, Int?> = try {
+        stockRedisGateway.getAll(zoneIds)
     } catch (exception: RedisUnavailableException) {
-        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneId=$zoneId" }
-        null
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+        emptyMap()
     } catch (exception: DataAccessException) {
-        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneId=$zoneId" }
-        null
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+        emptyMap()
     }
 
     private fun parseEventPublicId(eventId: String): UUID = runCatching { UUID.fromString(eventId) }
