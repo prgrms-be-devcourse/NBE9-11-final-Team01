@@ -85,6 +85,18 @@ data class EventListZoneRecord(
     val unitPrice: Int,
 )
 
+data class EventDetailQueryResult(
+    val event: EventDetail,
+    val zones: List<EventDetailZoneRecord>,
+)
+
+data class EventDetailZoneRecord(
+    val publicId: String,
+    val name: String,
+    val unitPrice: Int,
+    val totalCapacity: Int,
+)
+
 @Repository
 class EventRepository {
     fun findByPublicId(publicId: String): EventRecord? = transaction {
@@ -109,6 +121,24 @@ class EventRepository {
             .selectAll()
             .where { EventsTable.status neq EventStatus.CLOSED.name }
             .map { it.toDetail() }
+    }
+
+    fun findEventDetailByPublicId(publicId: String): EventDetailQueryResult? = transaction {
+        val publicStatuses = PUBLIC_DETAIL_STATUSES.map { it.name }
+
+        EventsTable
+            .selectAll()
+            .where {
+                (EventsTable.publicId eq publicId) and
+                    (EventsTable.status inList publicStatuses)
+            }.singleOrNull()
+            ?.toDetail()
+            ?.let { event ->
+                EventDetailQueryResult(
+                    event = event,
+                    zones = findDetailZoneRecordsByEventId(event.id),
+                )
+            }
     }
 
     fun insert(
@@ -216,6 +246,22 @@ class EventRepository {
                 unitPrice = it[ZonesTable.unitPrice],
             )
         }
+
+    private fun findDetailZoneRecordsByEventId(eventId: Long): List<EventDetailZoneRecord> = ZonesTable
+        .selectAll()
+        .where { ZonesTable.eventId eq eventId }
+        .map {
+            EventDetailZoneRecord(
+                publicId = it[ZonesTable.publicId],
+                name = it[ZonesTable.name],
+                unitPrice = it[ZonesTable.unitPrice],
+                totalCapacity = it[ZonesTable.totalCapacity],
+            )
+        }
+
+    private companion object {
+        val PUBLIC_DETAIL_STATUSES = setOf(EventStatus.ON_SALE, EventStatus.SOLD_OUT)
+    }
 
     private fun EventListSortBy.toColumn() = when (this) {
         EventListSortBy.START_TIME -> EventsTable.startTime
