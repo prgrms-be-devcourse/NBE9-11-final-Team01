@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.event
 import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -24,6 +25,7 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.mysql.MySQLContainer
+import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -31,6 +33,7 @@ import org.testcontainers.mysql.MySQLContainer
 class EventBulkCreateIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val redisTemplate: StringRedisTemplate,
+    @Autowired private val objectMapper: ObjectMapper,
 ) {
     companion object {
         @Container
@@ -242,12 +245,18 @@ class EventBulkCreateIntegrationTest(
                 .isEqualTo(zone.totalCapacity.toString())
         }
 
+        // event:info는 JSON String(Cache-Aside 리더와 동일 포맷)으로 적재된다.
         val eventInfoKey = "event:info:${created.eventPublicId}"
-        assertThat(redisTemplate.opsForHash<String, String>().entries(eventInfoKey))
-            .containsEntry("name", "2027 SnapTix Concert")
-            .containsEntry("startTime", "2027-12-25T10:00:00Z")
-            .containsEntry("endTime", "2027-12-25T13:00:00Z")
-            .containsEntry("status", "PENDING")
+        val cachedJson =
+            requireNotNull(redisTemplate.opsForValue().get(eventInfoKey)) {
+                "event:info 캐시가 적재되지 않았습니다: $eventInfoKey"
+            }
+        val cached = objectMapper.readValue(cachedJson, EventInfo::class.java)
+        assertThat(cached.eventId).isEqualTo(created.eventPublicId)
+        assertThat(cached.name).isEqualTo("2027 SnapTix Concert")
+        assertThat(cached.startTime).isEqualTo("2027-12-25T10:00:00Z")
+        assertThat(cached.endTime).isEqualTo("2027-12-25T13:00:00Z")
+        assertThat(cached.status).isEqualTo("PENDING")
         assertThat(redisTemplate.getExpire(eventInfoKey))
             .isBetween(1L, 3600L)
         assertThat(redisTemplate.hasKey("event:info:${created.eventId}")).isFalse()
