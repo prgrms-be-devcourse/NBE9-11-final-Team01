@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.event.controller
 
+import com.develop.snaptix.domain.event.dto.EventDetailResponse
 import com.develop.snaptix.domain.event.dto.EventListRequest
 import com.develop.snaptix.domain.event.dto.EventListSwaggerResponse
 import com.develop.snaptix.domain.event.dto.EventSummaryDto
@@ -18,6 +19,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
@@ -53,4 +55,27 @@ class EventController(
         @ModelAttribute
         request: EventListRequest,
     ): ResponseEntity<PageResponse<EventSummaryDto>> = ResponseEntity.ok(eventQueryService.getEvents(request))
+
+    @Operation(
+        summary = "이벤트 상세 및 실시간 재고 조회",
+        description = "이벤트 상세 정보와 구역별 재고 정보를 조회합니다. eventId와 zoneId는 외부 식별자인 public_id(UUID)를 사용합니다.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "이벤트 상세 조회 성공",
+                content = [Content(schema = Schema(implementation = EventDetailResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "존재하지 않는 이벤트",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+        ],
+    )
+    @GetMapping("/{eventId}")
+    fun getEventDetail(
+        @PathVariable eventId: String,
+    ): ResponseEntity<EventDetailResponse> = ResponseEntity.ok(eventQueryService.getEventDetail(eventId))
 }
