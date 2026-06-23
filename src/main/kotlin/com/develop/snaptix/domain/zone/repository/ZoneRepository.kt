@@ -40,26 +40,24 @@ class ZoneRepository {
         .map { it[ZonesTable.id] }
 
     /** 이벤트별 zone 정원 조회. 드리프트·재구축 산정에 사용. (작업 명세서 5.5) */
-    fun findByEventId(eventId: Long): List<ZoneCapacity> =
-        transaction {
-            ZonesTable
-                .selectAll()
-                .where { ZonesTable.eventId eq eventId }
-                .map {
-                    ZoneCapacity(
-                        id = it[ZonesTable.id],
-                        publicId = it[ZonesTable.publicId],
-                        totalCapacity = it[ZonesTable.totalCapacity],
-                    )
-                }
-        }
+    fun findByEventId(eventId: Long): List<ZoneCapacity> = transaction {
+        ZonesTable
+            .selectAll()
+            .where { ZonesTable.eventId eq eventId }
+            .map {
+                ZoneCapacity(
+                    id = it[ZonesTable.id],
+                    publicId = it[ZonesTable.publicId],
+                    totalCapacity = it[ZonesTable.totalCapacity],
+                )
+            }
+    }
 
-    private fun ResultRow.toInsertResult(): ZoneInsertResult =
-        ZoneInsertResult(
-            id = this[ZonesTable.id],
-            publicId = this[ZonesTable.publicId],
-            name = this[ZonesTable.name],
-            unitPrice = this[ZonesTable.unitPrice],
-            totalCapacity = this[ZonesTable.totalCapacity],
-        )
+    private fun ResultRow.toInsertResult(): ZoneInsertResult = ZoneInsertResult(
+        id = this[ZonesTable.id],
+        publicId = this[ZonesTable.publicId],
+        name = this[ZonesTable.name],
+        unitPrice = this[ZonesTable.unitPrice],
+        totalCapacity = this[ZonesTable.totalCapacity],
+    )
 }

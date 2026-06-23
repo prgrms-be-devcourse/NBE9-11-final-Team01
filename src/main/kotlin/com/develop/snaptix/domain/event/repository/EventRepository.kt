@@ -87,32 +87,29 @@ data class EventListZoneRecord(
 
 @Repository
 class EventRepository {
-    fun findByPublicId(publicId: String): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.publicId eq publicId }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findByPublicId(publicId: String): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.publicId eq publicId }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
-    fun findById(id: Long): EventRecord? =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.id eq id }
-                .singleOrNull()
-                ?.toRecord()
-        }
+    fun findById(id: Long): EventRecord? = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.id eq id }
+            .singleOrNull()
+            ?.toRecord()
+    }
 
     /** 활성 이벤트(`status != CLOSED`) 상세. 재구축·드리프트 대상. (작업 명세서 §6.2·§6.5) */
-    fun findActiveEvents(): List<EventDetail> =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.status neq EventStatus.CLOSED.name }
-                .map { it.toDetail() }
-        }
+    fun findActiveEvents(): List<EventDetail> = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.status neq EventStatus.CLOSED.name }
+            .map { it.toDetail() }
+    }
 
     fun insert(
         publicId: String,
@@ -121,17 +118,16 @@ class EventRepository {
         startTime: Instant,
         endTime: Instant,
         status: String,
-    ): Long =
-        transaction {
-            EventsTable.insert {
-                it[EventsTable.publicId] = publicId
-                it[EventsTable.name] = name
-                it[EventsTable.location] = location
-                it[EventsTable.startTime] = startTime
-                it[EventsTable.endTime] = endTime
-                it[EventsTable.status] = status
-            }[EventsTable.id]
-        }
+    ): Long = transaction {
+        EventsTable.insert {
+            it[EventsTable.publicId] = publicId
+            it[EventsTable.name] = name
+            it[EventsTable.location] = location
+            it[EventsTable.startTime] = startTime
+            it[EventsTable.endTime] = endTime
+            it[EventsTable.status] = status
+        }[EventsTable.id]
+    }
 
     fun insertEvent(
         publicId: String,
@@ -242,24 +238,22 @@ class EventRepository {
         status = EventStatus.valueOf(this[EventsTable.status]),
     )
 
-    private fun ResultRow.toRecord() =
-        EventRecord(
-            id = this[EventsTable.id],
-            publicId = this[EventsTable.publicId],
-            name = this[EventsTable.name],
-            status = this[EventsTable.status],
-        )
+    private fun ResultRow.toRecord() = EventRecord(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        status = this[EventsTable.status],
+    )
 
-    private fun ResultRow.toDetail() =
-        EventDetail(
-            id = this[EventsTable.id],
-            publicId = this[EventsTable.publicId],
-            name = this[EventsTable.name],
-            description = this[EventsTable.description],
-            location = this[EventsTable.location],
-            startTime = this[EventsTable.startTime],
-            endTime = this[EventsTable.endTime],
-            posterUrl = this[EventsTable.posterUrl],
-            status = this[EventsTable.status],
-        )
+    private fun ResultRow.toDetail() = EventDetail(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        description = this[EventsTable.description],
+        location = this[EventsTable.location],
+        startTime = this[EventsTable.startTime],
+        endTime = this[EventsTable.endTime],
+        posterUrl = this[EventsTable.posterUrl],
+        status = this[EventsTable.status],
+    )
 }
