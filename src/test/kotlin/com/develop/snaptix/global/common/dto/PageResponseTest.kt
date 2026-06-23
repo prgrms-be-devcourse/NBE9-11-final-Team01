@@ -6,6 +6,31 @@ import org.junit.jupiter.api.Test
 
 class PageResponseTest {
     @Test
+    fun `도메인 DTO 목록과 페이징 메타데이터를 합성할 수 있다`() {
+        val response =
+            PageResponse.of(
+                content =
+                    listOf(
+                        SampleListItem(id = "event-1", title = "SnapTix Concert"),
+                        SampleListItem(id = "event-2", title = "SnapTix Festival"),
+                    ),
+                pageNumber = 0,
+                pageSize = 10,
+                totalElements = 12,
+            )
+
+        assertThat(response.content)
+            .containsExactly(
+                SampleListItem(id = "event-1", title = "SnapTix Concert"),
+                SampleListItem(id = "event-2", title = "SnapTix Festival"),
+            )
+        assertThat(response.pageable.pageNumber).isZero()
+        assertThat(response.pageable.pageSize).isEqualTo(10)
+        assertThat(response.pageable.totalElements).isEqualTo(12)
+        assertThat(response.pageable.totalPages).isEqualTo(2)
+    }
+
+    @Test
     fun `공통 페이지 응답은 content와 메타데이터를 생성한다`() {
         val response =
             PageResponse.of(
@@ -60,4 +85,9 @@ class PageResponseTest {
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessage("pageSize는 1 이상이어야 합니다.")
     }
+
+    private data class SampleListItem(
+        val id: String,
+        val title: String,
+    )
 }
