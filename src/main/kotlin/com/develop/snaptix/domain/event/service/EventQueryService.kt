@@ -1,7 +1,12 @@
 package com.develop.snaptix.domain.event.service
 
+import com.develop.snaptix.domain.event.dto.EventDetailResponse
 import com.develop.snaptix.domain.event.dto.EventListRequest
 import com.develop.snaptix.domain.event.dto.EventSummaryDto
+import com.develop.snaptix.domain.event.dto.ZoneStockInfo
+import com.develop.snaptix.domain.event.entity.EventStatus
+import com.develop.snaptix.domain.event.repository.EventDetailQueryResult
+import com.develop.snaptix.domain.event.repository.EventDetailZoneRecord
 import com.develop.snaptix.domain.event.repository.EventListEventRecord
 import com.develop.snaptix.domain.event.repository.EventListSearchCondition
 import com.develop.snaptix.domain.event.repository.EventListSortBy
@@ -55,6 +60,14 @@ class EventQueryService(
         )
     }
 
+    fun getEventDetail(eventId: String): EventDetailResponse {
+        val detail =
+            eventRepository.findEventDetailByPublicId(eventId)
+                ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+        return detail.toDetailResponse()
+    }
+
     private fun validateDateRange(
         startDate: LocalDate?,
         endDate: LocalDate?,
@@ -73,6 +86,26 @@ class EventQueryService(
         status = status,
         minPrice = zones.minOfOrNull { it.unitPrice } ?: 0,
         isSoldOut = zones.isNotEmpty() && zones.all { it.isSoldOut() },
+    )
+
+    private fun EventDetailQueryResult.toDetailResponse(): EventDetailResponse = EventDetailResponse(
+        eventId = event.publicId,
+        name = event.name,
+        description = event.description,
+        location = event.location,
+        posterUrl = event.posterUrl,
+        startTime = event.startTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
+        endTime = event.endTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
+        status = EventStatus.valueOf(event.status),
+        zones = zones.map { it.toStockInfo() },
+    )
+
+    private fun EventDetailZoneRecord.toStockInfo(): ZoneStockInfo = ZoneStockInfo(
+        zoneId = publicId,
+        name = name,
+        unitPrice = unitPrice,
+        totalCapacity = totalCapacity,
+        currentStock = totalCapacity,
     )
 
     private fun EventListZoneRecord.isSoldOut(): Boolean = try {
