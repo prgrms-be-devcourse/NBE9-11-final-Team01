@@ -138,13 +138,17 @@ class EventQueryService(
         )
 
     private fun List<EventDetailZoneRecord>.toStockInfo(eventId: Long): List<ZoneStockInfo> {
-        val stockByZoneId = readCurrentStocks(map { it.id })
-        val fallbackOccupiedByZone by lazy {
-            reservationRepository.countOccupiedByZone(
-                eventId = eventId,
-                holdCutoff = Instant.now().minus(reconcileProperties.holdWindow),
-            )
-        }
+        val zoneIds = map { it.id }
+        val stockByZoneId = readCurrentStocks(zoneIds)
+        val fallbackOccupiedByZone =
+            if (stockByZoneId.hasMissingStock(zoneIds)) {
+                reservationRepository.countOccupiedByZone(
+                    eventId = eventId,
+                    holdCutoff = Instant.now().minus(reconcileProperties.holdWindow),
+                )
+            } else {
+                emptyMap()
+            }
 
         return map { zone ->
             zone.toStockInfo(
@@ -168,6 +172,8 @@ class EventQueryService(
             currentStock = currentStock ?: fallbackStock,
         )
     }
+
+    private fun Map<Long, Int?>.hasMissingStock(zoneIds: List<Long>): Boolean = zoneIds.any { this[it] == null }
 
     private fun readCurrentStocks(zoneIds: List<Long>): Map<Long, Int?> = try {
         stockRedisGateway.getAll(zoneIds)

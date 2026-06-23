@@ -2,6 +2,9 @@ package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.dto.EventListRequest
 import com.develop.snaptix.domain.event.entity.EventStatus
+import com.develop.snaptix.domain.event.repository.EventDetail
+import com.develop.snaptix.domain.event.repository.EventDetailQueryResult
+import com.develop.snaptix.domain.event.repository.EventDetailZoneRecord
 import com.develop.snaptix.domain.event.repository.EventListEventRecord
 import com.develop.snaptix.domain.event.repository.EventListPageRecord
 import com.develop.snaptix.domain.event.repository.EventListSearchCondition
@@ -18,6 +21,7 @@ import com.develop.snaptix.global.resilience.ReconcileProperties
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -26,6 +30,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
 
 class EventQueryServiceTest {
     private val eventRepository = mockk<EventRepository>()
@@ -205,6 +210,29 @@ class EventQueryServiceTest {
         assertThat(conditionSlot.captured.sortDir).isEqualTo(EventListSortDir.ASC)
     }
 
+    @Test
+    fun `상세 조회에서 모든 Redis 재고가 있으면 MySQL fallback을 조회하지 않는다`() {
+        val eventPublicId = UUID.randomUUID().toString()
+        val zones =
+            listOf(
+                detailZoneRecord(id = 10L, totalCapacity = 100),
+                detailZoneRecord(id = 11L, totalCapacity = 200),
+            )
+        every { eventCacheRedisGateway.get(UUID.fromString(eventPublicId)) } returns null
+        every { eventCacheRedisGateway.put(UUID.fromString(eventPublicId), any()) } returns Unit
+        every { eventRepository.findEventDetailByPublicId(eventPublicId) } returns
+            EventDetailQueryResult(
+                event = eventDetail(publicId = eventPublicId),
+                zones = zones,
+            )
+        every { stockRedisGateway.getAll(listOf(10L, 11L)) } returns mapOf(10L to 57, 11L to 0)
+
+        val response = eventQueryService.getEventDetail(eventPublicId)
+
+        assertThat(response.zones.map { it.currentStock }).containsExactly(57, 0)
+        verify(exactly = 0) { reservationRepository.countOccupiedByZone(any(), any()) }
+    }
+
     private fun assertInvalidParameter(action: () -> Unit) {
         assertThatThrownBy(action)
             .isInstanceOf(BusinessException::class.java)
@@ -236,5 +264,31 @@ class EventQueryServiceTest {
         eventId = eventId,
         zoneId = zoneId,
         unitPrice = unitPrice,
+    )
+
+    private fun eventDetail(
+        id: Long = 1L,
+        publicId: String = UUID.randomUUID().toString(),
+    ): EventDetail = EventDetail(
+        id = id,
+        publicId = publicId,
+        name = "이벤트 상세",
+        description = "상세 설명",
+        location = "서울",
+        startTime = Instant.parse("2027-12-25T10:00:00Z"),
+        endTime = Instant.parse("2027-12-25T13:00:00Z"),
+        posterUrl = "https://cdn.snaptix.kr/events/detail.jpg",
+        status = EventStatus.ON_SALE.name,
+    )
+
+    private fun detailZoneRecord(
+        id: Long,
+        totalCapacity: Int,
+    ): EventDetailZoneRecord = EventDetailZoneRecord(
+        id = id,
+        publicId = UUID.randomUUID().toString(),
+        name = "구역 $id",
+        unitPrice = 100_000,
+        totalCapacity = totalCapacity,
     )
 }
