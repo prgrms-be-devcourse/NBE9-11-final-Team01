@@ -2,10 +2,16 @@ package com.develop.snaptix.domain.reservation.repository
 
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greaterEq
+import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.or
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
+import java.time.Instant
 
 /**
  * Exposed 기반 [ReservationQuery] 구현.
@@ -29,4 +35,68 @@ class ReservationRepository : ReservationQuery {
                 )
             }.singleOrNull()
     }
+
+    /** zoneId → 유효 점유 수(이벤트 한정). 드리프트·재구축 산정 공통. */
+    fun countOccupiedByZone(
+        eventId: Long,
+        holdCutoff: Instant,
+    ): Map<Long, Int> = transaction {
+        ReservationsTable
+            .selectAll()
+            .where {
+                (ReservationsTable.eventId eq eventId) and isOccupied(holdCutoff)
+            }.map { it[ReservationsTable.zoneId] }
+            .groupingBy { it }
+            .eachCount()
+    }
+
+    /** 만료 PENDING(`status=PENDING_PAYMENT AND created_at < cutoff`). */
+    fun findExpiredPending(cutoff: Instant): List<ExpiredReservation> = transaction {
+        ReservationsTable
+            .selectAll()
+            .where {
+                (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
+                    (ReservationsTable.createdAt less cutoff)
+            }.map {
+                ExpiredReservation(
+                    id = it[ReservationsTable.id],
+                    orderId = it[ReservationsTable.orderId],
+                    zoneId = it[ReservationsTable.zoneId],
+                )
+            }
+    }
+
+    /** 조건부 UPDATE → RELEASED. affected rows(0/1) 반환. 동시 결제 성공 경쟁 제어. */
+    fun releaseIfPending(id: Long): Int = transaction {
+        ReservationsTable.update(
+            {
+                (ReservationsTable.id eq id) and
+                    (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name)
+            },
+        ) {
+            it[status] = ReservationStatus.RELEASED.name
+            it[updatedAt] = Instant.now()
+        }
+    }
+
+    /** 유효 PENDING의 orderId를 zoneId별로. claimed 재구축에 사용. */
+    fun findValidPendingOrderIds(
+        eventId: Long,
+        holdCutoff: Instant,
+    ): Map<Long, List<String>> = transaction {
+        ReservationsTable
+            .selectAll()
+            .where {
+                (ReservationsTable.eventId eq eventId) and
+                    (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
+                    (ReservationsTable.createdAt greaterEq holdCutoff)
+            }.map { it[ReservationsTable.zoneId] to it[ReservationsTable.orderId] }
+            .groupBy({ it.first }, { it.second })
+    }
+
+    private fun isOccupied(holdCutoff: Instant) = (ReservationsTable.status eq ReservationStatus.CONFIRMED.name) or
+        (
+            (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
+                (ReservationsTable.createdAt greaterEq holdCutoff)
+        )
 }
