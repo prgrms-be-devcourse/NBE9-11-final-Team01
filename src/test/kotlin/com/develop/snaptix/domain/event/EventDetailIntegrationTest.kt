@@ -9,6 +9,7 @@ import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
+import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.not
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -27,6 +28,7 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.mysql.MySQLContainer
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -164,6 +166,102 @@ class EventDetailIntegrationTest(
     }
 
     @Test
+    fun `Redis 재고 일부가 없으면 Redis 값과 MySQL fallback 값을 함께 사용한다`() {
+        val event = insertEventWithZones()
+        val userId = insertUser()
+        redisTemplate.opsForValue().set("ZONE:${event.zones[0].id}:stock", "57")
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.CONFIRMED,
+        )
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[1].id,
+            status = ReservationStatus.CONFIRMED,
+        )
+
+        mockMvc
+            .get("/api/v1/events/${event.publicId}")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.zones[0].currentStock") { value(57) }
+                jsonPath("$.zones[1].currentStock") { value(199) }
+            }
+    }
+
+    @Test
+    fun `MySQL fallback은 확정 예약과 유효한 결제대기 예약만 점유 수로 계산한다`() {
+        val event = insertEventWithZones()
+        val userId = insertUser()
+        val expiredAt = Instant.now().minus(Duration.ofDays(1))
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.CONFIRMED,
+        )
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.PENDING_PAYMENT,
+        )
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.PENDING_PAYMENT,
+            createdAt = expiredAt,
+        )
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.CANCELLED,
+        )
+        insertReservation(
+            userId = userId,
+            eventId = event.id,
+            zoneId = event.zones[0].id,
+            status = ReservationStatus.RELEASED,
+        )
+
+        mockMvc
+            .get("/api/v1/events/${event.publicId}")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.zones[0].currentStock") { value(98) }
+                jsonPath("$.zones[1].currentStock") { value(200) }
+            }
+    }
+
+    @Test
+    fun `캐시 미스 상세 조회는 이벤트 메타데이터를 Redis에 저장한다`() {
+        val event = insertEventWithZones()
+
+        mockMvc
+            .get("/api/v1/events/${event.publicId}")
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.eventId") { value(event.publicId) }
+            }
+
+        val cached = eventCacheRedisGateway.get(UUID.fromString(event.publicId))
+        assertThat(cached).isNotNull
+        assertThat(cached?.eventId).isEqualTo(event.publicId)
+        assertThat(cached?.name).isEqualTo("2027 SnapTix Concert")
+        assertThat(cached?.description).isEqualTo("인기 아티스트 콘서트입니다.")
+        assertThat(cached?.location).isEqualTo("올림픽공원 체조경기장")
+        assertThat(cached?.startTime).isEqualTo("2027-12-25T10:00:00Z")
+        assertThat(cached?.endTime).isEqualTo("2027-12-25T13:00:00Z")
+        assertThat(cached?.status).isEqualTo("ON_SALE")
+        assertThat(cached?.posterUrl).isEqualTo("https://cdn.snaptix.kr/events/detail.jpg")
+    }
+
+    @Test
     fun `이벤트 메타데이터 캐시가 있으면 캐시 값을 응답에 사용한다`() {
         val event = insertEventWithZones()
         eventCacheRedisGateway.put(
@@ -287,6 +385,7 @@ class EventDetailIntegrationTest(
         eventId: Long,
         zoneId: Long,
         status: ReservationStatus,
+        createdAt: Instant = Instant.now(),
     ) {
         transaction {
             ReservationsTable.insert {
@@ -296,6 +395,8 @@ class EventDetailIntegrationTest(
                 it[ReservationsTable.zoneId] = zoneId
                 it[ReservationsTable.amount] = 100_000
                 it[ReservationsTable.status] = status.name
+                it[ReservationsTable.createdAt] = createdAt
+                it[ReservationsTable.updatedAt] = createdAt
             }
         }
     }
