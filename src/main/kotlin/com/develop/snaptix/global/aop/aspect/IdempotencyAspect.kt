@@ -78,20 +78,19 @@ class IdempotencyAspect(
         userId: Long,
         eventId: UUID,
         orderId: UUID,
-    ): Boolean =
-        try {
-            idempotencyGateway.tryAcquire(userId, eventId, orderId)
-        } catch (e: DataAccessException) {
-            log.warn(e) {
-                jsonLog(
-                    "action" to "IDEMPOTENCY_CHECK",
-                    "result" to "SKIP_FAIL_OPEN",
-                    "userId" to userId,
-                    "eventId" to eventId,
-                )
-            }
-            true
+    ): Boolean = try {
+        idempotencyGateway.tryAcquire(userId, eventId, orderId)
+    } catch (e: DataAccessException) {
+        log.warn(e) {
+            jsonLog(
+                "action" to "IDEMPOTENCY_CHECK",
+                "result" to "SKIP_FAIL_OPEN",
+                "userId" to userId,
+                "eventId" to eventId,
+            )
         }
+        true
+    }
 
     /**
      * 값이 자기 orderId일 때만 삭제(게이트웨이 위임). 정리 실패는 TTL 만료로 자연 해소.
@@ -127,13 +126,12 @@ class IdempotencyAspect(
      * JoinPoint 인자에서 IdempotencyTarget 구현체를 찾아 반환.
      * @Idempotent 메서드는 반드시 IdempotencyTarget 인자를 하나 포함해야 한다.
      */
-    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget =
-        jp.args
-            .filterIsInstance<IdempotencyTarget>()
-            .firstOrNull()
-            ?: throw IllegalArgumentException(
-                "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
-            )
+    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget = jp.args
+        .filterIsInstance<IdempotencyTarget>()
+        .firstOrNull()
+        ?: throw IllegalArgumentException(
+            "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
+        )
 
     /** 구조화 로그용 간단한 JSON 직렬화 */
     private fun jsonLog(vararg pairs: Pair<String, Any?>): String =
