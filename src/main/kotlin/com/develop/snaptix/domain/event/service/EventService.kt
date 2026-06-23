@@ -181,9 +181,8 @@ class EventService(
         }
     }
 
-    private fun String.toEventStatus(): EventStatus =
-        runCatching { EventStatus.valueOf(this) }
-            .getOrElse {
-                throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "저장된 이벤트 상태가 올바르지 않습니다. 현재 상태: $this")
-            }
+    private fun String.toEventStatus(): EventStatus = runCatching { EventStatus.valueOf(this) }
+        .getOrElse {
+            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "저장된 이벤트 상태가 올바르지 않습니다. 현재 상태: $this")
+        }
 }

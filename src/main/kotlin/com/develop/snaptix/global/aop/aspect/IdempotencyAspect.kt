@@ -5,16 +5,16 @@ import com.develop.snaptix.global.aop.type.AspectOrder
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.redis.IdempotencyConflictException
-import com.develop.snaptix.global.redis.script.COMPARE_AND_DELETE_SCRIPT
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.core.annotation.Order
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.script.DefaultRedisScript
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -34,22 +34,20 @@ import java.time.Duration
  *   - ORDER_HOLD 생성(워커)    → PEXPIRE key 300_000
  *   - CONFIRMED(결제 확정)     → SET key COMPLETED KEEPTTL
  *   - CANCELLED / RELEASED    → compare-and-delete(orderId)
+ *
+ * compare-and-delete Lua는 RedisScriptConfig가 등록한 빈을 주입받는다(자체 컴파일 금지).
  */
 @Aspect
 @Component
 @Order(AspectOrder.IDEMPOTENCY)
 class IdempotencyAspect(
     private val redis: StringRedisTemplate,
+    @Qualifier("compareAndDeleteScript")
+    private val compareAndDeleteScript: RedisScript<Long>,
 ) {
     companion object {
         /** 인게스트 봉투 TTL: 예상 최대 큐 대기 + 홀드 5분 + 여유 (권장 8분) */
         private val ENVELOPE_TTL = Duration.ofMinutes(8)
-
-        private val cadScript =
-            DefaultRedisScript<Long>().apply {
-                setScriptText(COMPARE_AND_DELETE_SCRIPT)
-                setResultType(Long::class.java)
-            }
 
         private val log = KotlinLogging.logger {}
     }
@@ -93,20 +91,19 @@ class IdempotencyAspect(
         orderId: String,
         userId: Long,
         eventId: String,
-    ): Boolean =
-        try {
-            redis.opsForValue().setIfAbsent(key, orderId, ENVELOPE_TTL) ?: false
-        } catch (e: DataAccessException) {
-            log.warn(e) {
-                jsonLog(
-                    "action" to "IDEMPOTENCY_CHECK",
-                    "result" to "SKIP_FAIL_OPEN",
-                    "userId" to userId,
-                    "eventId" to eventId,
-                )
-            }
-            true // fail-open
+    ): Boolean = try {
+        redis.opsForValue().setIfAbsent(key, orderId, ENVELOPE_TTL) ?: false
+    } catch (e: DataAccessException) {
+        log.warn(e) {
+            jsonLog(
+                "action" to "IDEMPOTENCY_CHECK",
+                "result" to "SKIP_FAIL_OPEN",
+                "userId" to userId,
+                "eventId" to eventId,
+            )
         }
+        true // fail-open
+    }
 
     /**
      * Lua compare-and-delete: 값이 orderId와 일치할 때만 DEL.
@@ -117,7 +114,7 @@ class IdempotencyAspect(
         orderId: String,
     ) {
         try {
-            redis.execute(cadScript, listOf(key), orderId)
+            redis.execute(compareAndDeleteScript, listOf(key), orderId)
         } catch (e: DataAccessException) {
             // 키 정리 실패는 TTL 만료로 자연 해소됨 — 재시도 억제보다 유실이 더 큰 피해
             log.warn(e) {
@@ -144,13 +141,12 @@ class IdempotencyAspect(
      * JoinPoint 인자에서 IdempotencyTarget 구현체를 찾아 반환.
      * @Idempotent 메서드는 반드시 IdempotencyTarget 인자를 하나 포함해야 한다.
      */
-    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget =
-        jp.args
-            .filterIsInstance<IdempotencyTarget>()
-            .firstOrNull()
-            ?: throw IllegalArgumentException(
-                "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
-            )
+    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget = jp.args
+        .filterIsInstance<IdempotencyTarget>()
+        .firstOrNull()
+        ?: throw IllegalArgumentException(
+            "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
+        )
 
     /** 구조화 로그용 간단한 JSON 직렬화 */
     private fun jsonLog(vararg pairs: Pair<String, Any?>): String =

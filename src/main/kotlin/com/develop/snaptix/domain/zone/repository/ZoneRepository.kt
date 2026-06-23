@@ -34,11 +34,10 @@ class ZoneRepository {
         }
     }
 
-    fun findIdsByEventId(eventId: Long): List<Long> =
-        ZonesTable
-            .selectAll()
-            .where { ZonesTable.eventId eq eventId }
-            .map { it[ZonesTable.id] }
+    fun findIdsByEventId(eventId: Long): List<Long> = ZonesTable
+        .selectAll()
+        .where { ZonesTable.eventId eq eventId }
+        .map { it[ZonesTable.id] }
 
     /** 이벤트별 zone 정원 조회. 드리프트·재구축 산정에 사용. (작업 명세서 5.5) */
     fun findByEventId(eventId: Long): List<ZoneCapacity> =

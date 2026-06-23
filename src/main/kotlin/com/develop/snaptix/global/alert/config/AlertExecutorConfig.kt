@@ -13,13 +13,12 @@ private const val ALERT_EXECUTOR_QUEUE_CAPACITY = 100
 @Configuration
 class AlertExecutorConfig {
     @Bean("alertExecutor")
-    fun alertExecutor(): Executor =
-        ThreadPoolTaskExecutor().apply {
-            corePoolSize = ALERT_EXECUTOR_CORE_POOL_SIZE
-            maxPoolSize = ALERT_EXECUTOR_MAX_POOL_SIZE
-            queueCapacity = ALERT_EXECUTOR_QUEUE_CAPACITY
-            setThreadNamePrefix("alert-")
-            setRejectedExecutionHandler(ThreadPoolExecutor.DiscardOldestPolicy())
-            initialize()
-        }
+    fun alertExecutor(): Executor = ThreadPoolTaskExecutor().apply {
+        corePoolSize = ALERT_EXECUTOR_CORE_POOL_SIZE
+        maxPoolSize = ALERT_EXECUTOR_MAX_POOL_SIZE
+        queueCapacity = ALERT_EXECUTOR_QUEUE_CAPACITY
+        setThreadNamePrefix("alert-")
+        setRejectedExecutionHandler(ThreadPoolExecutor.DiscardOldestPolicy())
+        initialize()
+    }
 }

@@ -2,9 +2,16 @@ package com.develop.snaptix.domain.event.repository
 
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
+import com.develop.snaptix.domain.zone.entity.ZonesTable
+import org.jetbrains.exposed.v1.core.Op
 import org.jetbrains.exposed.v1.core.ResultRow
+import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.greaterEq
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -33,6 +40,49 @@ data class EventDetail(
     val endTime: Instant,
     val posterUrl: String?,
     val status: String,
+)
+
+data class EventListSearchCondition(
+    val page: Int,
+    val size: Int,
+    val sortBy: EventListSortBy,
+    val sortDir: EventListSortDir,
+    val location: String?,
+    val startTimeFrom: Instant?,
+    val startTimeBefore: Instant?,
+)
+
+enum class EventListSortBy {
+    START_TIME,
+    CREATED_AT,
+    NAME,
+}
+
+enum class EventListSortDir {
+    ASC,
+    DESC,
+}
+
+data class EventListPageRecord(
+    val events: List<EventListEventRecord>,
+    val zones: List<EventListZoneRecord>,
+    val totalElements: Long,
+)
+
+data class EventListEventRecord(
+    val id: Long,
+    val publicId: String,
+    val name: String,
+    val location: String,
+    val startTime: Instant,
+    val posterUrl: String?,
+    val status: EventStatus,
+)
+
+data class EventListZoneRecord(
+    val eventId: Long,
+    val zoneId: Long,
+    val unitPrice: Int,
 )
 
 @Repository
@@ -112,13 +162,85 @@ class EventRepository {
         publicId: String,
         currentStatus: EventStatus,
         status: EventStatus,
-    ): Int =
-        EventsTable.update({
-            (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
-        }) {
-            it[EventsTable.status] = status.name
-            it[EventsTable.updatedAt] = Instant.now()
+    ): Int = EventsTable.update({
+        (EventsTable.publicId eq publicId) and (EventsTable.status eq currentStatus.name)
+    }) {
+        it[EventsTable.status] = status.name
+        it[EventsTable.updatedAt] = Instant.now()
+    }
+
+    fun findPublicEventPage(condition: EventListSearchCondition): EventListPageRecord = transaction {
+        val where = publicEventWhere(condition)
+        val totalElements = EventsTable.selectAll().where(where).count()
+        val events =
+            EventsTable
+                .selectAll()
+                .where(where)
+                .orderBy(condition.sortBy.toColumn() to condition.sortDir.toSortOrder())
+                .limit(condition.size)
+                .offset(condition.page.toLong() * condition.size.toLong())
+                .map { it.toListEventRecord() }
+        val zones =
+            events
+                .map { it.id }
+                .takeIf { it.isNotEmpty() }
+                ?.let(::findZoneRecordsByEventIds)
+                .orEmpty()
+
+        EventListPageRecord(
+            events = events,
+            zones = zones,
+            totalElements = totalElements,
+        )
+    }
+
+    private fun publicEventWhere(condition: EventListSearchCondition): Op<Boolean> {
+        var where: Op<Boolean> = EventsTable.status eq EventStatus.ON_SALE.name
+
+        condition.location?.takeIf { it.isNotBlank() }?.let { location ->
+            where = where and (EventsTable.location like "%$location%")
         }
+        condition.startTimeFrom?.let { startTimeFrom ->
+            where = where and (EventsTable.startTime greaterEq startTimeFrom)
+        }
+        condition.startTimeBefore?.let { startTimeBefore ->
+            where = where and (EventsTable.startTime less startTimeBefore)
+        }
+
+        return where
+    }
+
+    private fun findZoneRecordsByEventIds(eventIds: List<Long>): List<EventListZoneRecord> = ZonesTable
+        .selectAll()
+        .where { ZonesTable.eventId inList eventIds }
+        .map {
+            EventListZoneRecord(
+                eventId = it[ZonesTable.eventId],
+                zoneId = it[ZonesTable.id],
+                unitPrice = it[ZonesTable.unitPrice],
+            )
+        }
+
+    private fun EventListSortBy.toColumn() = when (this) {
+        EventListSortBy.START_TIME -> EventsTable.startTime
+        EventListSortBy.CREATED_AT -> EventsTable.createdAt
+        EventListSortBy.NAME -> EventsTable.name
+    }
+
+    private fun EventListSortDir.toSortOrder() = when (this) {
+        EventListSortDir.ASC -> SortOrder.ASC
+        EventListSortDir.DESC -> SortOrder.DESC
+    }
+
+    private fun ResultRow.toListEventRecord() = EventListEventRecord(
+        id = this[EventsTable.id],
+        publicId = this[EventsTable.publicId],
+        name = this[EventsTable.name],
+        location = this[EventsTable.location],
+        startTime = this[EventsTable.startTime],
+        posterUrl = this[EventsTable.posterUrl],
+        status = EventStatus.valueOf(this[EventsTable.status]),
+    )
 
     private fun ResultRow.toRecord() =
         EventRecord(

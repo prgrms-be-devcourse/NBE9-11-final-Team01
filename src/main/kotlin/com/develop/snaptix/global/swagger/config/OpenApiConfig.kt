@@ -12,20 +12,19 @@ private const val ACCESS_TOKEN_COOKIE = "accessToken"
 @Configuration
 class OpenApiConfig {
     @Bean
-    fun openAPI(): OpenAPI =
-        OpenAPI()
-            .info(
-                Info()
-                    .title("SnapTix API")
-                    .description("SnapTix Ticketing Service API")
-                    .version("v1"),
-            ).components(
-                Components().addSecuritySchemes(
-                    ACCESS_TOKEN_COOKIE,
-                    SecurityScheme()
-                        .type(SecurityScheme.Type.APIKEY)
-                        .`in`(SecurityScheme.In.COOKIE)
-                        .name(ACCESS_TOKEN_COOKIE),
-                ),
-            )
+    fun openAPI(): OpenAPI = OpenAPI()
+        .info(
+            Info()
+                .title("SnapTix API")
+                .description("SnapTix Ticketing Service API")
+                .version("v1"),
+        ).components(
+            Components().addSecuritySchemes(
+                ACCESS_TOKEN_COOKIE,
+                SecurityScheme()
+                    .type(SecurityScheme.Type.APIKEY)
+                    .`in`(SecurityScheme.In.COOKIE)
+                    .name(ACCESS_TOKEN_COOKIE),
+            ),
+        )
 }

@@ -46,9 +46,8 @@ class JwtAuthenticationFilter(
         )
     }
 
-    private fun HttpServletRequest.extractAccessToken(): String? =
-        cookies
-            ?.firstOrNull { it.name == ACCESS_TOKEN_COOKIE_NAME }
-            ?.value
-            ?.takeIf { it.isNotBlank() }
+    private fun HttpServletRequest.extractAccessToken(): String? = cookies
+        ?.firstOrNull { it.name == ACCESS_TOKEN_COOKIE_NAME }
+        ?.value
+        ?.takeIf { it.isNotBlank() }
 }

@@ -564,13 +564,12 @@ class EventStatusUpdateIntegrationTest(
         redisTemplate.keys(pattern).takeIf { it.isNotEmpty() }?.let(redisTemplate::delete)
     }
 
-    private fun findEventStatus(eventId: String): String =
-        transaction {
-            EventsTable
-                .selectAll()
-                .where { EventsTable.publicId eq eventId }
-                .single()[EventsTable.status]
-        }
+    private fun findEventStatus(eventId: String): String = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.publicId eq eventId }
+            .single()[EventsTable.status]
+    }
 
     private data class CreatedEvent(
         val publicId: String,
