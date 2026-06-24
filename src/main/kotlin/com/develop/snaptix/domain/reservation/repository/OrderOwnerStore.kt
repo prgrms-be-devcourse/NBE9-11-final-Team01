@@ -1,8 +1,6 @@
 package com.develop.snaptix.domain.reservation.repository
 
-import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
-import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
@@ -31,11 +29,10 @@ fun interface OrderOwnerStore {
  */
 @Repository
 class RedisOrderOwnerStore(
-    private val executor: ResilientRedisExecutor,
     private val ownershipRedisGateway: OwnershipRedisGateway,
 ) : OrderOwnerStore {
-    override fun findOwnerUserId(orderId: String): Long? = executor.execute(RedisAction.OWNERSHIP) {
+    override fun findOwnerUserId(orderId: String): Long? = runCatching {
         val orderUuid = UUID.fromString(orderId)
-        ownershipRedisGateway.get(orderUuid)
-    }
+        ownershipRedisGateway.ownerOf(orderUuid)
+    }.getOrNull()
 }

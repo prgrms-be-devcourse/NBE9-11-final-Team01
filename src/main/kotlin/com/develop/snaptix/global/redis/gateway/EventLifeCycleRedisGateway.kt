@@ -46,14 +46,24 @@ class EventLifeCycleRedisGateway(
         if (keys.isEmpty()) return 0L
         return executor.execute(RedisAction.CACHE_INVALIDATE) {
             redis.delete(keys)
-        }
+        } ?: 0L
     }
 
     /**
      * 특정 주문 Stream의 메시지 길이(XLEN)를 조회한다.
      */
-    fun getStreamLength(streamKey: String): Long = executor.execute(RedisAction.XREADGROUP) {
-        redis.opsForStream<String, String>().size(streamKey) ?: 0L
+    fun getStreamLength(streamKey: String): Long = try {
+        executor.execute(RedisAction.XREADGROUP) {
+            redis.opsForStream<String, String>().size(streamKey) ?: 0L
+        }
+    } catch (e: DataAccessException) {
+        // ✅ 수정: 예외 전파를 막고 디버깅 로그 기록 후 0L 폴백
+        logger.warn(e) { "[LIFECYCLE_GATEWAY_ERROR] Failed to fetch stream length for key=$streamKey" }
+        0L
+    } catch (e: RedisUnavailableException) {
+        // ✅ 수정: 서킷 브레이커 개방 시에도 안전하게 0L 폴백
+        logger.warn(e) { "[LIFECYCLE_GATEWAY_CIRCUIT_OPEN] Redis unavailable while fetching stream length" }
+        0L
     }
 
     /**
