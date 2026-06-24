@@ -32,7 +32,9 @@ class MockPaymentApproveService(
         validatePayableStatus(reservation)
         validateHoldWindow(orderId, reservation)
 
-        paymentApproveGuardGateway.tryApprove(orderId)
+        if (!paymentApproveGuardGateway.tryApprove(orderId)) {
+            return MockPaymentApproveResponse(orderId = request.orderId)
+        }
 
         return MockPaymentApproveResponse(orderId = request.orderId)
     }
