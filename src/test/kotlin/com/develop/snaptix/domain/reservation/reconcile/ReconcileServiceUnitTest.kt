@@ -27,6 +27,10 @@ class ReconcileServiceUnitTest {
     private val orderId = UUID.randomUUID().toString()
     private val expired = ExpiredReservation(id = 1L, orderId = orderId, zoneId = 10L)
 
+    // 실패해도 기록 남기고 진행하는 테스트용
+    private val r1 = ExpiredReservation(id = 1L, orderId = UUID.randomUUID().toString(), zoneId = 10L)
+    private val r2 = ExpiredReservation(id = 2L, orderId = UUID.randomUUID().toString(), zoneId = 20L)
+
     @Test
     fun `affected=1 이고 claimed 보유면 released·compensated 증가 + 올바른 인자로 호출`() {
         every { reservationRepository.findExpiredPending(any()) } returns listOf(expired)
@@ -81,5 +85,32 @@ class ReconcileServiceUnitTest {
         assertThat(report.compensated).isEqualTo(0)
         verify(exactly = 0) { reservationRepository.releaseIfPending(any()) }
         verify(exactly = 0) { stockGateway.compensate(any(), any()) }
+    }
+
+    @Test
+    fun `한 건 보상 중 예외가 나도 다음 건은 계속 정산하고 failed로 집계한다`() {
+        every { reservationRepository.findExpiredPending(any()) } returns listOf(r1, r2)
+        every { reservationRepository.releaseIfPending(any()) } returns 1
+        every { stockGateway.compensate(r1.zoneId, UUID.fromString(r1.orderId)) } throws RuntimeException("redis down")
+        every { stockGateway.compensate(r2.zoneId, UUID.fromString(r2.orderId)) } returns true
+
+        val report = service.reconcileExpired(now)
+
+        assertThat(report.released).isEqualTo(2) // 둘 다 RELEASED
+        assertThat(report.compensated).isEqualTo(1) // r2만 보상
+        assertThat(report.failed).isEqualTo(1) // r1 격리
+    }
+
+    @Test
+    fun `감사 로그 insert가 실패해도 보상 결과는 유지된다(best-effort)`() {
+        every { reservationRepository.findExpiredPending(any()) } returns listOf(r1)
+        every { reservationRepository.releaseIfPending(r1.id) } returns 1
+        every { stockGateway.compensate(r1.zoneId, any()) } returns true
+        every { auditLogRepository.insert(null, any(), any(), r1.id, any()) } throws RuntimeException("audit fail")
+
+        val report = service.reconcileExpired(now)
+
+        assertThat(report.compensated).isEqualTo(1) // 감사 실패가 보상 카운트를 깨지 않음
+        assertThat(report.failed).isEqualTo(0)
     }
 }

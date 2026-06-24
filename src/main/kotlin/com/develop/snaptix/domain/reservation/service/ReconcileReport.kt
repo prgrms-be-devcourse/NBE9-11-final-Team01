@@ -8,4 +8,5 @@ package com.develop.snaptix.domain.reservation.service
 data class ReconcileReport(
     val released: Int,
     val compensated: Int,
+    val failed: Int = 0,
 )

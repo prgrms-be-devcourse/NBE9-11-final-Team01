@@ -30,19 +30,32 @@ class ReconcileService(
 ) {
     private val logger = KotlinLogging.logger {}
 
+    @Suppress("TooGenericExceptionCaught") // 행 단위 격리: 한 건 실패가 배치를 막지 않도록
     fun reconcileExpired(now: Instant): ReconcileReport {
         val cutoff = now.minus(reconcileProperties.holdWindow)
         val expired = reservationRepository.findExpiredPending(cutoff) // 조회된 결고값(ExpiredReservation)
 
         var released = 0
         var compensated = 0
+        var failed = 0
         for (reservation in expired) {
-            if (reservationRepository.releaseIfPending(reservation.id) != 1) {
-                continue // 0이면 이미 주문 성공되거나 다른 정산 처리
-            }
-            released++
-            if (compensate(reservation)) {
-                compensated++
+            try {
+                if (reservationRepository.releaseIfPending(reservation.id) != 1) {
+                    continue // 이미 CONFIRMED/타 처리
+                }
+                released++
+                if (compensate(reservation)) {
+                    compensated++
+                }
+            } catch (e: Exception) {
+                failed++
+                // DB는 RELEASED지만 Redis 미보상 = 일시적 누수(drift). Drift(PR-06)/Rebuild(PR-07/08)가 교정.
+                // 즉 실패기록을 남기는 것
+                logger.atError {
+                    message = "Reconcile failed for one reservation (left as drift)"
+                    cause = e
+                    payload = mapOf("reservationId" to reservation.id, "orderId" to reservation.orderId)
+                }
             }
         }
 
@@ -53,33 +66,46 @@ class ReconcileService(
                     "action" to RedisAction.RECONCILE_RUN.name,
                     "released" to released,
                     "compensated" to compensated,
+                    "failed" to failed,
                 )
         }
-        return ReconcileReport(released = released, compensated = compensated)
+        return ReconcileReport(released = released, compensated = compensated, failed = failed)
     }
 
     /**
      * true = orderId ∈ claimed 라서 실제로 +1 & claimed 제거(보상 수행) → compensated++.
      * false = claimed에 없음(이미 보상됐거나 워커가 차감한 적 없음) → no-op.
+     * @Async + @TransactionalEventListener로는 나중에 현재는 runCatching으로
      */
     private fun compensate(reservation: ExpiredReservation): Boolean {
-        val compensated =
-            stockRedisGateway.compensate(
-                reservation.zoneId,
-                UUID.fromString(reservation.orderId), // ← String → UUID
+        val done = stockRedisGateway.compensate(reservation.zoneId, UUID.fromString(reservation.orderId))
+        writeAudit(reservation, done) // best-effort
+        return done
+    }
+
+    private fun writeAudit(
+        reservation: ExpiredReservation,
+        compensated: Boolean,
+    ) {
+        runCatching {
+            auditLogRepository.insert(
+                actorId = null,
+                actionType = RedisAction.RECONCILE_RUN.name,
+                targetType = "RESERVATION",
+                targetId = reservation.id,
+                details =
+                    buildJsonObject {
+                        put("orderId", reservation.orderId)
+                        put("zoneId", reservation.zoneId)
+                        put("compensated", compensated) // ← 필드명도 compensated로 정정
+                    },
             )
-        auditLogRepository.insert(
-            actorId = null,
-            actionType = RedisAction.RECONCILE_RUN.name,
-            targetType = "RESERVATION",
-            targetId = reservation.id,
-            details =
-                buildJsonObject {
-                    put("orderId", reservation.orderId)
-                    put("zoneId", reservation.zoneId)
-                    put("compensateResult", compensated)
-                },
-        )
-        return compensated
+        }.onFailure { e ->
+            logger.atWarn {
+                message = "Audit log insert failed (compensation already applied)"
+                cause = e
+                payload = mapOf("reservationId" to reservation.id)
+            }
+        }
     }
 }
