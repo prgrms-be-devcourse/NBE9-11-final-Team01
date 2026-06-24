@@ -1,7 +1,10 @@
+// 위치: src/main/kotlin/com/develop/snaptix/global/aop/aspect/CacheAsideAspect.kt
 package com.develop.snaptix.global.aop.aspect
 
 import com.develop.snaptix.global.aop.annotation.RedisCacheAside
 import com.develop.snaptix.global.aop.type.AspectOrder
+import com.develop.snaptix.global.exception.redis.RedisUnavailableException
+import com.develop.snaptix.global.redis.gateway.RedisCacheGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
 import org.aspectj.lang.annotation.Around
@@ -10,35 +13,16 @@ import org.aspectj.lang.reflect.MethodSignature
 import org.slf4j.MDC
 import org.springframework.core.annotation.Order
 import org.springframework.dao.DataAccessException
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 
-/**
- * @RedisCacheAside 메서드에 Cache-Aside 패턴을 적용하는 Aspect.
- *
- * ┌ Redis GET ──────────────────────────────────────────────────────────────┐
- * │  HIT      → 역직렬화 후 반환 (DB 미조회)              [CACHE_GET HIT]   │
- * │  MISS     → proceed(DB) → SET best-effort → 반환      [CACHE_GET MISS]  │
- * │  손상     → DEL 후 proceed(DB) 반환                   [CACHE_GET CORRUPTED] │
- * │  장애     → fallbackOnMiss=true 이면 proceed(DB) 반환 [CACHE_GET FALLBACK_DB] │
- * └────────────────────────────────────────────────────────────────────────┘
- *
- * 실행 순서: 주문 체인(CB→RateLimit→Idempotency→Logging)과 별개로
- *            조회 메서드만 감싸므로 @Order(5)로 독립 위치시킨다.
- *
- * 무효화(DEL)는 이 Aspect 범위 밖 — EventService 레이어가 직접 담당:
- *   - 등록(A-01): SET event:info:{publicId} (캐시 선발급)
- *   - 상태변경(A-02)/CLOSED: DEL event:info:{publicId}
- *   - Redis 복구(Story 13.2): RebuildService가 SET
- */
 @Aspect
 @Component
 @Order(AspectOrder.CACHE_ASIDE)
 class CacheAsideAspect(
-    private val redis: StringRedisTemplate,
+    private val redisCacheGateway: RedisCacheGateway,
     private val objectMapper: ObjectMapper,
 ) {
     companion object {
@@ -69,11 +53,15 @@ class CacheAsideAspect(
         traceId: String,
         start: Long,
     ): GetResult = try {
-        when (val json = redis.opsForValue().get(key)) {
+        when (val json = redisCacheGateway.get(key)) {
             null -> GetResult.Miss
             else -> GetResult.Hit(json)
         }
     } catch (e: DataAccessException) {
+        if (!cacheAside.fallbackOnMiss) throw e
+        logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
+        GetResult.Fallback
+    } catch (e: RedisUnavailableException) {
         if (!cacheAside.fallbackOnMiss) throw e
         logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
         GetResult.Fallback
@@ -126,11 +114,13 @@ class CacheAsideAspect(
     ) {
         try {
             val json = objectMapper.writeValueAsString(value)
-            redis.opsForValue().set(key, json, Duration.ofSeconds(ttlSeconds))
+            redisCacheGateway.put(key, json, Duration.ofSeconds(ttlSeconds))
             logInfo("CACHE_SET", "SUCCESS", key, traceId, elapsed(start))
         } catch (e: JacksonException) {
             logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
         } catch (e: DataAccessException) {
+            logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
+        } catch (e: RedisUnavailableException) {
             logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
         }
     }
@@ -143,19 +133,17 @@ class CacheAsideAspect(
         start: Long,
     ) {
         try {
-            redis.delete(key)
+            redisCacheGateway.evict(key)
         } catch (e: DataAccessException) {
             // 삭제 실패는 TTL 만료로 자연 해소 — 진행은 계속
+            logWarn("CACHE_GET", "DEL_FAIL", key, traceId, elapsed(start), e)
+        } catch (e: RedisUnavailableException) {
             logWarn("CACHE_GET", "DEL_FAIL", key, traceId, elapsed(start), e)
         }
     }
 
     // ── 키 구성 ───────────────────────────────────────────────────────
 
-    /**
-     * 캐시 키 구성: "{keyPrefix}:{첫 번째 String 인자}"
-     * 예) getEventInfo(publicId: String) → "event:info:{publicId}"
-     */
     private fun buildKey(
         jp: ProceedingJoinPoint,
         cacheAside: RedisCacheAside,
