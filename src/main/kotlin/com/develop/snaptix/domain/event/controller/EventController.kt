@@ -46,6 +46,11 @@ class EventController(
                 description = "쿼리 파라미터 검증 실패 또는 허용되지 않는 정렬 조건",
                 content = [Content(schema = Schema(implementation = ErrorResponse::class))],
             ),
+            ApiResponse(
+                responseCode = "429",
+                description = "동일 IP 기준 이벤트 목록 조회 요청 제한 초과",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
         ],
     )
     @GetMapping
@@ -58,7 +63,9 @@ class EventController(
 
     @Operation(
         summary = "이벤트 상세 및 실시간 재고 조회",
-        description = "이벤트 상세 정보와 구역별 재고 정보를 조회합니다. eventId와 zoneId는 외부 식별자인 public_id(UUID)를 사용합니다.",
+        description =
+            "이벤트 상세 정보와 구역별 재고 정보를 조회합니다. eventId와 zoneId는 외부 식별자인 public_id(UUID)를 사용합니다. " +
+                "상세 조회는 ON_SALE, SOLD_OUT 상태 이벤트만 공개하며 currentStock은 Redis 재고를 우선 사용하고 누락 시 MySQL 기준으로 계산합니다.",
     )
     @ApiResponses(
         value = [
