@@ -12,6 +12,8 @@ import com.develop.snaptix.global.redis.gateway.OrderHoldRedisGateway
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.redis.gateway.WebhookGuardRedisGateway
 import org.springframework.stereotype.Service
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
 @Service
@@ -20,9 +22,22 @@ class MockPaymentWebhookService(
     private val webhookGuardRedisGateway: WebhookGuardRedisGateway,
     private val orderHoldRedisGateway: OrderHoldRedisGateway,
     private val stockRedisGateway: StockRedisGateway,
+    private val signatureVerifier: MockPaymentWebhookSignatureVerifier,
+    private val objectMapper: ObjectMapper,
 ) {
-    fun handle(request: MockPaymentWebhookRequest): MockPaymentWebhookResponse {
-        val orderId = UUID.fromString(request.orderId)
+    fun handle(
+        rawBody: String,
+        signature: String?,
+    ): MockPaymentWebhookResponse {
+        verifySignature(rawBody, signature)
+
+        val request = parseRequest(rawBody)
+        val orderId = parseOrderId(request.orderId)
+
+        if (webhookGuardRedisGateway.isProcessed(orderId)) {
+            return skipped(request.orderId)
+        }
+
         val result =
             when (request.paymentStatus) {
                 MockPaymentStatus.SUCCESS -> paymentReservationRepository.confirmIfPending(request.orderId)
@@ -31,20 +46,52 @@ class MockPaymentWebhookService(
 
         if (shouldRunSideEffects(request.paymentStatus, result)) {
             releaseHold(orderId)
+            releaseClaimIfPaymentSucceeded(orderId, request.paymentStatus, result)
             compensateStockIfPaymentFailed(orderId, request.paymentStatus, result)
         }
 
         webhookGuardRedisGateway.markProcessed(orderId)
 
-        return MockPaymentWebhookResponse(
-            orderId = request.orderId,
-            processed = result.processed,
-            message = if (result.processed) MESSAGE_PROCESSED else MESSAGE_SKIPPED,
-        )
+        return if (result.processed) {
+            processed(request.orderId)
+        } else {
+            skipped(request.orderId)
+        }
+    }
+
+    private fun verifySignature(
+        rawBody: String,
+        signature: String?,
+    ) {
+        if (!signatureVerifier.isValid(rawBody, signature)) {
+            throw BusinessException(ErrorCode.PAYMENT_WEBHOOK_SIGNATURE_INVALID)
+        }
+    }
+
+    private fun parseRequest(rawBody: String): MockPaymentWebhookRequest = try {
+        objectMapper.readValue(rawBody, MockPaymentWebhookRequest::class.java)
+    } catch (exception: JacksonException) {
+        throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "Webhook 요청 본문이 유효하지 않습니다.", exception)
+    }
+
+    private fun parseOrderId(orderId: String): UUID = try {
+        UUID.fromString(orderId)
+    } catch (exception: IllegalArgumentException) {
+        throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "orderId는 올바른 UUID 형식이어야 합니다.", exception)
     }
 
     private fun releaseHold(orderId: UUID) {
         orderHoldRedisGateway.delete(orderId)
+    }
+
+    private fun releaseClaimIfPaymentSucceeded(
+        orderId: UUID,
+        paymentStatus: MockPaymentStatus,
+        result: PaymentWebhookProcessResult,
+    ) {
+        if (paymentStatus == MockPaymentStatus.SUCCESS) {
+            stockRedisGateway.releaseClaim(result.reservation.zoneId, orderId)
+        }
     }
 
     private fun shouldRunSideEffects(
@@ -70,6 +117,18 @@ class MockPaymentWebhookService(
             stockRedisGateway.compensate(result.reservation.zoneId, orderId)
         }
     }
+
+    private fun processed(orderId: String): MockPaymentWebhookResponse = MockPaymentWebhookResponse(
+        orderId = orderId,
+        processed = true,
+        message = MESSAGE_PROCESSED,
+    )
+
+    private fun skipped(orderId: String): MockPaymentWebhookResponse = MockPaymentWebhookResponse(
+        orderId = orderId,
+        processed = false,
+        message = MESSAGE_SKIPPED,
+    )
 
     companion object {
         private const val MESSAGE_PROCESSED = "결제 결과가 처리되었습니다."

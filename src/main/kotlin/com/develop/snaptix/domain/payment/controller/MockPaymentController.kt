@@ -2,10 +2,10 @@ package com.develop.snaptix.domain.payment.controller
 
 import com.develop.snaptix.domain.payment.dto.MockPaymentApproveRequest
 import com.develop.snaptix.domain.payment.dto.MockPaymentApproveResponse
-import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookRequest
 import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookResponse
 import com.develop.snaptix.domain.payment.service.MockPaymentApproveService
 import com.develop.snaptix.domain.payment.service.MockPaymentWebhookService
+import com.develop.snaptix.domain.payment.service.MockPaymentWebhookSignatureVerifier
 import com.develop.snaptix.global.exception.ErrorResponse
 import com.develop.snaptix.global.security.auth.CurrentUserProvider
 import io.swagger.v3.oas.annotations.Operation
@@ -20,6 +20,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
@@ -119,11 +120,12 @@ class MockPaymentController(
     )
     @PostMapping("/webhook")
     fun webhook(
-        @Valid
         @RequestBody
-        request: MockPaymentWebhookRequest,
+        rawBody: String,
+        @RequestHeader(MockPaymentWebhookSignatureVerifier.HEADER_NAME, required = false)
+        signature: String?,
     ): ResponseEntity<MockPaymentWebhookResponse> {
-        val response = mockPaymentWebhookService.handle(request)
+        val response = mockPaymentWebhookService.handle(rawBody, signature)
         return ResponseEntity.ok(response)
     }
 }

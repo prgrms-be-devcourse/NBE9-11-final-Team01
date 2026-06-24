@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.payment
 
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.payment.dto.MockPaymentStatus
+import com.develop.snaptix.domain.payment.service.MockPaymentWebhookSignatureVerifier
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
@@ -40,6 +41,7 @@ class MockPaymentWebhookIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val redisTemplate: StringRedisTemplate,
     @Autowired private val objectMapper: ObjectMapper,
+    @Autowired private val signatureVerifier: MockPaymentWebhookSignatureVerifier,
 ) {
     companion object {
         @Container
@@ -67,6 +69,7 @@ class MockPaymentWebhookIntegrationTest(
             registry.add("spring.data.redis.host", redis::getHost)
             registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
             registry.add("jwt.secret") { "integration-test-secret-key-for-snaptix-payment-webhook-flow-256-bit" }
+            registry.add("payment.mock.webhook.secret") { "integration-test-mock-payment-webhook-secret" }
         }
     }
 
@@ -84,11 +87,13 @@ class MockPaymentWebhookIntegrationTest(
         val seed = insertPaymentReservation(status = ReservationStatus.PENDING_PAYMENT)
         createOrderHold(seed.orderId)
         seedClaimedStock(seed, stock = 0)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
 
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.orderId") { value(seed.orderId) }
@@ -98,6 +103,8 @@ class MockPaymentWebhookIntegrationTest(
 
         assertThat(findReservationStatus(seed.orderId)).isEqualTo(ReservationStatus.CONFIRMED.name)
         assertThat(countTickets(seed.reservationId)).isEqualTo(1)
+        assertThat(redisTemplate.opsForValue().get("ZONE:${seed.zoneId}:stock")).isEqualTo("0")
+        assertThat(redisTemplate.opsForSet().isMember("ZONE:${seed.zoneId}:claimed", seed.orderId)).isFalse()
         assertThat(redisTemplate.hasKey("ORDER_HOLD:${seed.orderId}")).isFalse()
         assertThat(redisTemplate.hasKey("webhook:processed:${seed.orderId}")).isTrue()
     }
@@ -107,11 +114,13 @@ class MockPaymentWebhookIntegrationTest(
         val seed = insertPaymentReservation(status = ReservationStatus.PENDING_PAYMENT)
         createOrderHold(seed.orderId)
         seedClaimedStock(seed, stock = 0)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
 
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.orderId") { value(seed.orderId) }
@@ -131,11 +140,13 @@ class MockPaymentWebhookIntegrationTest(
         val seed = insertPaymentReservation(status = ReservationStatus.PENDING_PAYMENT)
         createOrderHold(seed.orderId)
         seedClaimedStock(seed, stock = 0)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
 
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.processed") { value(true) }
@@ -144,7 +155,8 @@ class MockPaymentWebhookIntegrationTest(
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.processed") { value(false) }
@@ -160,11 +172,13 @@ class MockPaymentWebhookIntegrationTest(
         val seed = insertPaymentReservation(status = ReservationStatus.CANCELLED)
         createOrderHold(seed.orderId)
         seedClaimedStock(seed, stock = 0)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
 
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.processed") { value(false) }
@@ -178,10 +192,13 @@ class MockPaymentWebhookIntegrationTest(
 
     @Test
     fun `존재하지 않는 주문의 Webhook은 404를 반환한다`() {
+        val body = webhookBody(UUID.randomUUID().toString(), MockPaymentStatus.SUCCESS)
+
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(UUID.randomUUID().toString(), MockPaymentStatus.SUCCESS)
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isNotFound() }
                 jsonPath("$.code") { value(ErrorCode.ORDER_NOT_FOUND.code) }
@@ -193,15 +210,35 @@ class MockPaymentWebhookIntegrationTest(
         val seed = insertPaymentReservation(status = ReservationStatus.PENDING_PAYMENT)
         createOrderHold(seed.orderId)
         seedClaimedStock(seed, stock = 0)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
 
         mockMvc
             .post(WEBHOOK_PATH) {
                 contentType = MediaType.APPLICATION_JSON
-                content = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.processed") { value(true) }
             }
+    }
+
+    @Test
+    fun `Webhook 서명이 유효하지 않으면 401을 반환한다`() {
+        val seed = insertPaymentReservation(status = ReservationStatus.PENDING_PAYMENT)
+        val body = webhookBody(seed.orderId, MockPaymentStatus.SUCCESS)
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, "sha256=invalid")
+                content = body
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.PAYMENT_WEBHOOK_SIGNATURE_INVALID.code) }
+            }
+
+        assertThat(findReservationStatus(seed.orderId)).isEqualTo(ReservationStatus.PENDING_PAYMENT.name)
     }
 
     private fun insertPaymentReservation(status: ReservationStatus): SeededPayment {
@@ -247,6 +284,8 @@ class MockPaymentWebhookIntegrationTest(
             "failReason" to failReason,
         ),
     )
+
+    private fun signature(body: String): String = signatureVerifier.sign(body)
 
     private fun findReservationId(orderId: String): Long = transaction {
         ReservationsTable
