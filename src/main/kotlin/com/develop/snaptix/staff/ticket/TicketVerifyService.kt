@@ -57,7 +57,9 @@ class TicketVerifyService(
     ) {
         val reservationEventId =
             verifyQuery.findReservationEventId(reservationId)
-                ?: error("Reservation not found: $reservationId")
+                ?: throw BusinessException(
+                    ErrorCode.RESERVATION_NOT_FOUND,
+                )
 
         if (reservationEventId != eventId) {
             throw EventMismatchException()
