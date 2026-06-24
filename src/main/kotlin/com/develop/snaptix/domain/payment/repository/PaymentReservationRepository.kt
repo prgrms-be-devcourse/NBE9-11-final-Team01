@@ -72,7 +72,10 @@ class PaymentReservationRepository {
             }
 
         if (updated == 0) {
-            return@transaction PaymentWebhookProcessResult(processed = false, reservation = reservation)
+            return@transaction PaymentWebhookProcessResult(
+                processed = false,
+                reservation = findByOrderIdInTransaction(orderId) ?: reservation,
+            )
         }
 
         val ticketCode = UUID.randomUUID().toString()
@@ -110,7 +113,7 @@ class PaymentReservationRepository {
                 if (updated == 1) {
                     reservation.copy(status = ReservationStatus.CANCELLED)
                 } else {
-                    reservation
+                    findByOrderIdInTransaction(orderId) ?: reservation
                 },
         )
     }

@@ -69,6 +69,19 @@ class GlobalExceptionHandler {
             .body(ErrorCode.VALIDATION_FAILED.toErrorResponse(fieldErrors))
     }
 
+    @ExceptionHandler(FieldValidationException::class)
+    fun handleFieldValidationException(
+        ex: FieldValidationException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ErrorResponse> {
+        val detail = ex.fieldErrors.joinToString(", ") { "${it.field}: ${it.reason}" }
+        logger.warn { "[FIELD_VALIDATION_ERROR] detail=$detail, path=${request.requestURI}" }
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorCode.VALIDATION_FAILED.toErrorResponse(ex.fieldErrors))
+    }
+
     // ✅ @Validated 메서드 파라미터 검증 실패 (HandlerMethodValidationException)
     @ExceptionHandler(HandlerMethodValidationException::class)
     fun handleMethodValidationException(

@@ -8,9 +8,12 @@ import com.develop.snaptix.domain.payment.repository.PaymentWebhookProcessResult
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.exception.ErrorResponse
+import com.develop.snaptix.global.exception.FieldValidationException
 import com.develop.snaptix.global.redis.gateway.OrderHoldRedisGateway
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.redis.gateway.WebhookGuardRedisGateway
+import jakarta.validation.Validator
 import org.springframework.stereotype.Service
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
@@ -24,6 +27,7 @@ class MockPaymentWebhookService(
     private val stockRedisGateway: StockRedisGateway,
     private val signatureVerifier: MockPaymentWebhookSignatureVerifier,
     private val objectMapper: ObjectMapper,
+    private val validator: Validator,
 ) {
     fun handle(
         rawBody: String,
@@ -32,6 +36,7 @@ class MockPaymentWebhookService(
         verifySignature(rawBody, signature)
 
         val request = parseRequest(rawBody)
+        validateRequest(request)
         val orderId = parseOrderId(request.orderId)
 
         if (webhookGuardRedisGateway.isProcessed(orderId)) {
@@ -72,6 +77,22 @@ class MockPaymentWebhookService(
         objectMapper.readValue(rawBody, MockPaymentWebhookRequest::class.java)
     } catch (exception: JacksonException) {
         throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "Webhook 요청 본문이 유효하지 않습니다.", exception)
+    }
+
+    private fun validateRequest(request: MockPaymentWebhookRequest) {
+        val fieldErrors =
+            validator
+                .validate(request)
+                .map {
+                    ErrorResponse.FieldError(
+                        field = it.propertyPath.toString(),
+                        reason = it.message,
+                    )
+                }.sortedBy { it.field }
+
+        if (fieldErrors.isNotEmpty()) {
+            throw FieldValidationException(fieldErrors)
+        }
     }
 
     private fun parseOrderId(orderId: String): UUID = try {
