@@ -31,6 +31,13 @@ class OwnershipRedisGateway(
         }
     }
 
+    /** * 소유자 userId 조회 (신규 추가)
+     * @return 소유자 userId, 키가 부재하거나 만료된 경우 null 반환
+     */
+    fun get(orderId: UUID): Long? = executor.execute(RedisAction.OWNERSHIP) {
+        redis.opsForValue().get(keys.orderOwner(orderId))?.toLongOrNull()
+    }
+
     /** 소유자 userId 조회. 부재 또는 비정상 값이면 null. */
     fun ownerOf(orderId: UUID): Long? = executor.execute(RedisAction.OWNERSHIP) {
         redis.opsForValue().get(keys.orderOwner(orderId))?.toLongOrNull()

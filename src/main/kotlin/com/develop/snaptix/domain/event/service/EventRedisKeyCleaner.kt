@@ -1,26 +1,26 @@
 package com.develop.snaptix.domain.event.service
 
+import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
-import org.springframework.dao.DataAccessException
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 
 private const val ORDER_WORKERS_GROUP = "order-workers"
 
 @Component
 class EventRedisKeyCleaner(
-    private val redisTemplate: StringRedisTemplate,
+    // ❌ 기존: private val redisTemplate: StringRedisTemplate 저수준 직접 의존 제거
+    // ✅ 수정: 라이프사이클 전용 캡슐화 게이트웨이 조입
+    private val eventLifeCycleRedisGateway: EventLifeCycleRedisGateway,
 ) {
     private val logger = KotlinLogging.logger {}
 
     fun cleanup(target: EventRedisCleanupTarget) {
         val keys = target.toImmediateCleanupKeys()
-        if (keys.isEmpty()) {
-            return
-        }
 
-        val deletedCount = redisTemplate.delete(keys)
+        // ✅ 수정: 게이트웨이 캡슐화 파이프라인으로 무효화 위임
+        val deletedCount = eventLifeCycleRedisGateway.deleteImmediateKeys(keys)
         val streamDeletedCount = cleanupOrderStream(target)
+
         logger.info {
             "[EVENT_REDIS_CLEANUP] eventPublicId=${target.eventPublicId}, zoneCount=${target.zoneIds.size}, " +
                 "requestedKeys=${keys.size + 1}, deletedKeys=${deletedCount + streamDeletedCount}"
@@ -34,43 +34,29 @@ class EventRedisKeyCleaner(
         if (!streamStatus.canDelete) {
             logger.warn {
                 "[EVENT_ORDER_STREAM_DELETE_SKIPPED] eventPublicId=${target.eventPublicId}, " +
-                    "streamKey=$streamKey, streamLength=${streamStatus.streamLength}, pendingCount=${streamStatus.pendingCount}"
+                    "streamLength=${streamStatus.streamLength}, pendingCount=${streamStatus.pendingCount}"
             }
             return 0L
         }
 
-        return if (redisTemplate.delete(streamKey)) 1L else 0L
+        // ✅ 수정: 캡슐화 게이트웨이를 통해 Stream 최종 파괴 처리
+        return eventLifeCycleRedisGateway.deleteImmediateKeys(listOf(streamKey))
     }
 
     private fun getOrderStreamStatus(streamKey: String): OrderStreamStatus {
-        val streamOperations = redisTemplate.opsForStream<String, String>()
-        val streamInfo =
-            try {
-                streamOperations.info(streamKey)
-            } catch (exception: DataAccessException) {
-                logger.debug(exception) { "[EVENT_ORDER_STREAM_INFO_SKIPPED] streamKey=$streamKey" }
-                return OrderStreamStatus(streamLength = 0L, pendingCount = 0L, canDelete = true)
-            }
-        val streamLength = streamInfo.streamLength()
+        // ✅ 수정: 저수준 연산을 게이트웨이의 고수준 추상화 채널로 정합화
+        val streamLength = eventLifeCycleRedisGateway.getStreamLength(streamKey)
+        if (streamLength == 0L) {
+            return OrderStreamStatus(0L, 0L, true)
+        }
 
-        val pendingCount =
-            try {
-                streamOperations.pending(streamKey, ORDER_WORKERS_GROUP).totalPendingMessages
-            } catch (exception: DataAccessException) {
-                logger.debug(exception) { "[EVENT_ORDER_STREAM_PENDING_SKIPPED] streamKey=$streamKey" }
-                0L
-            }
-        val groupLastDeliveredId =
-            try {
-                streamOperations
-                    .groups(streamKey)
-                    .firstOrNull { it.groupName() == ORDER_WORKERS_GROUP }
-                    ?.lastDeliveredId()
-            } catch (exception: DataAccessException) {
-                logger.debug(exception) { "[EVENT_ORDER_STREAM_GROUP_SKIPPED] streamKey=$streamKey" }
-                null
-            }
-        val hasUndeliveredMessages = streamLength > 0 && groupLastDeliveredId != streamInfo.lastGeneratedId()
+        val groupInfo = eventLifeCycleRedisGateway.getStreamGroupInfo(streamKey, ORDER_WORKERS_GROUP)
+        val pendingCount = groupInfo?.pendingCount ?: 0L
+
+        val groupLastDeliveredId = eventLifeCycleRedisGateway.getGroupLastDeliveredId(streamKey, ORDER_WORKERS_GROUP)
+        val streamLastGeneratedId = eventLifeCycleRedisGateway.getStreamLastGeneratedId(streamKey)
+
+        val hasUndeliveredMessages = streamLength > 0 && groupLastDeliveredId != streamLastGeneratedId
 
         return OrderStreamStatus(
             streamLength = streamLength,
