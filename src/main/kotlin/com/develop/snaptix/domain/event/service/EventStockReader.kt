@@ -26,11 +26,11 @@ class EventStockReader(
      */
     fun readStocksWithFallbackFlag(zoneIds: List<Long>): Pair<Map<Long, Int?>, Boolean> = try {
         stockRedisGateway.getAll(zoneIds) to false
-    } catch (e: DataAccessException) {
-        logger.warn(e) { "[EVENT_LIST_STOCK_READ_FAILED] fallback to DB" }
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_LIST_STOCK_READ_FAILED] fallback to DB" }
         emptyMap<Long, Int?>() to true
-    } catch (e: RedisUnavailableException) {
-        logger.warn(e) { "[EVENT_LIST_STOCK_READ_FAILED] fallback to DB" }
+    } catch (exception: RedisUnavailableException) {
+        logger.warn(exception) { "[EVENT_LIST_STOCK_READ_FAILED] fallback to DB" }
         emptyMap<Long, Int?>() to true
     }
 
@@ -80,11 +80,11 @@ class EventStockReader(
 
     private fun readCurrentStocks(zoneIds: List<Long>): Map<Long, Int?> = try {
         stockRedisGateway.getAll(zoneIds)
-    } catch (e: RedisUnavailableException) {
-        logger.warn(e) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+    } catch (exception: RedisUnavailableException) {
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
         emptyMap()
-    } catch (e: DataAccessException) {
-        logger.warn(e) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
         emptyMap()
     }
 

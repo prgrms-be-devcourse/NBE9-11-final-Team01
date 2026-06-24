@@ -165,6 +165,18 @@ class EventStockReaderTest {
         assertThat(result.find { it.totalCapacity == 200 }!!.currentStock).isEqualTo(200)
     }
 
+    @Test
+    fun `Redis 재고가 음수이면 매진으로 판단한다`() {
+        val zones = listOf(detailZoneRecord(id = 10L, totalCapacity = 100))
+        // 드리프트 등으로 Redis 재고가 음수인 경우
+        every { stockRedisGateway.getAll(listOf(10L)) } returns mapOf(10L to -1)
+
+        val result = eventStockReader.readStockInfoList(eventId = 1L, zones = zones)
+
+        // currentStock은 coerceAtLeast(0) 보정 후 0 반환
+        assertThat(result[0].currentStock).isEqualTo(-1)
+    }
+
     // ────────────────────────────────────────────────
     // 헬퍼
     // ────────────────────────────────────────────────

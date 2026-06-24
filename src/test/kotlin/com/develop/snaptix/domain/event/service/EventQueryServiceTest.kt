@@ -173,6 +173,23 @@ class EventQueryServiceTest {
     }
 
     @Test
+    fun `Redis 재고가 음수이면 매진으로 판단한다`() {
+        every { eventRepository.findPublicEventPage(any()) } returns
+            EventListPageRecord(
+                events = listOf(eventRecord(id = 1L)),
+                zones = listOf(zoneRecord(eventId = 1L, zoneId = 10L, unitPrice = 100_000, totalCapacity = 100)),
+                totalElements = 1L,
+            )
+        // 드리프트 등으로 Redis 재고가 음수가 된 경우 → 매진으로 처리
+        every { eventStockReader.readStocksWithFallbackFlag(listOf(10L)) } returns
+            (mapOf(10L to -1) to false)
+
+        val response = eventQueryService.getEvents(EventListRequest())
+
+        assertThat(response.content[0].isSoldOut).isTrue()
+    }
+
+    @Test
     fun `구역 중 일부라도 재고가 있으면 매진이 아니다`() {
         every { eventRepository.findPublicEventPage(any()) } returns
             EventListPageRecord(

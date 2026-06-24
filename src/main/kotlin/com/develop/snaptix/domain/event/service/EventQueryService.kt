@@ -122,7 +122,7 @@ class EventQueryService(
                 zones.all { zone ->
                     val stock = stockByZoneId[zone.zoneId]
                     if (stock != null) {
-                        stock == 0
+                        stock <= 0
                     } else {
                         (zone.totalCapacity - occupiedByZoneId.getOrDefault(zone.zoneId, 0))
                             .coerceAtLeast(0) == 0
@@ -160,11 +160,11 @@ class EventQueryService(
 
     private fun findCachedMetadata(eventPublicId: UUID): EventMetadata? = try {
         eventCacheRedisGateway.get(eventPublicId)?.toMetadataOrNull()
-    } catch (e: RedisUnavailableException) {
-        logger.warn(e) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
+    } catch (exception: RedisUnavailableException) {
+        logger.warn(exception) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
         null
-    } catch (e: DataAccessException) {
-        logger.warn(e) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
         null
     }
 
@@ -174,10 +174,10 @@ class EventQueryService(
     ) {
         try {
             eventCacheRedisGateway.put(eventPublicId, eventInfo)
-        } catch (e: RedisUnavailableException) {
-            logger.warn(e) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
-        } catch (e: DataAccessException) {
-            logger.warn(e) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
+        } catch (exception: RedisUnavailableException) {
+            logger.warn(exception) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
+        } catch (exception: DataAccessException) {
+            logger.warn(exception) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
         }
     }
 
