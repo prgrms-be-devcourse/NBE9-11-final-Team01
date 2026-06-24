@@ -35,18 +35,20 @@ class RedisCacheGatewayIntegrationTest {
         // 1. MySQL 컨테이너 추가
         @Container
         @JvmStatic
-        val mysql = MySQLContainer("mysql:9.7").apply {
-            withDatabaseName("snaptix")
-            withUsername("snaptix")
-            withPassword("snaptix1234")
-        }
+        val mysql =
+            MySQLContainer("mysql:9.7").apply {
+                withDatabaseName("snaptix")
+                withUsername("snaptix")
+                withPassword("snaptix1234")
+            }
 
         // 2. 기존 Redis 컨테이너 유지
         @Container
         @JvmStatic
-        val redisContainer = GenericContainer(DockerImageName.parse("redis:8.8.0")).apply {
-            withExposedPorts(6379)
-        }
+        val redisContainer =
+            GenericContainer(DockerImageName.parse("redis:8.8.0")).apply {
+                withExposedPorts(6379)
+            }
 
         @DynamicPropertySource
         @JvmStatic
