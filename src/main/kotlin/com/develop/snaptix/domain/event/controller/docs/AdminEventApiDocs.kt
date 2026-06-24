@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 
 private const val VALIDATION_ERROR_EXAMPLE = """
@@ -148,7 +149,9 @@ interface AdminEventApiDocs {
             ),
         ],
     )
-    fun createEvent(request: EventBulkCreateRequest): ResponseEntity<EventBulkCreateResponse>
+    fun createEvent(
+        @Valid request: EventBulkCreateRequest,
+    ): ResponseEntity<EventBulkCreateResponse>
 
     @Operation(
         summary = "이벤트 상태 변경",
@@ -238,6 +241,7 @@ interface AdminEventApiDocs {
     )
     fun updateEventStatus(
         eventId: String,
+        @Valid
         request: EventStatusUpdateRequest,
     ): ResponseEntity<EventStatusUpdateResponse>
 }

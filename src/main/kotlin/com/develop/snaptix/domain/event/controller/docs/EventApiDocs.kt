@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 
 private const val EVENT_LIST_VALIDATION_ERROR_EXAMPLE = """
@@ -109,7 +110,9 @@ interface EventApiDocs {
             ),
         ],
     )
-    fun getEvents(request: EventListRequest): ResponseEntity<PageResponse<EventSummaryDto>>
+    fun getEvents(
+        @Valid request: EventListRequest,
+    ): ResponseEntity<PageResponse<EventSummaryDto>>
 
     @Operation(
         summary = "이벤트 상세 및 실시간 재고 조회",
