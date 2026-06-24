@@ -9,12 +9,15 @@ import com.develop.snaptix.global.aop.annotation.RateLimit
 import com.develop.snaptix.global.common.dto.PageResponse
 import com.develop.snaptix.global.exception.ErrorResponse
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
@@ -22,6 +25,43 @@ import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+
+private const val EVENT_LIST_VALIDATION_ERROR_EXAMPLE = """
+{
+  "code": "COMMON-009",
+  "message": "입력값 검증에 실패했습니다.",
+  "errors": [
+    {
+      "field": "size",
+      "reason": "50 이하여야 합니다."
+    }
+  ]
+}
+"""
+
+private const val EVENT_LIST_INVALID_SORT_EXAMPLE = """
+{
+  "code": "COMMON-002",
+  "message": "sortBy는 startTime, createdAt, name만 허용됩니다.",
+  "errors": null
+}
+"""
+
+private const val EVENT_LIST_RATE_LIMIT_EXAMPLE = """
+{
+  "code": "COMMON-010",
+  "message": "요청 횟수가 초과되었습니다. 잠시 후 다시 시도해주세요.",
+  "errors": null
+}
+"""
+
+private const val EVENT_NOT_FOUND_EXAMPLE = """
+{
+  "code": "EVENT-001",
+  "message": "존재하지 않는 이벤트입니다.",
+  "errors": null
+}
+"""
 
 @Tag(name = "Events", description = "이벤트 조회 API")
 @Validated
@@ -39,21 +79,52 @@ class EventController(
             ApiResponse(
                 responseCode = "200",
                 description = "이벤트 목록 조회 성공",
-                content = [Content(schema = Schema(implementation = EventListSwaggerResponse::class))],
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = EventListSwaggerResponse::class),
+                    ),
+                ],
             ),
             ApiResponse(
                 responseCode = "400",
                 description = "쿼리 파라미터 검증 실패 또는 허용되지 않는 정렬 조건",
-                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = ErrorResponse::class),
+                        examples = [
+                            ExampleObject(
+                                name = "ValidationFailed",
+                                value = EVENT_LIST_VALIDATION_ERROR_EXAMPLE,
+                            ),
+                            ExampleObject(
+                                name = "InvalidSort",
+                                value = EVENT_LIST_INVALID_SORT_EXAMPLE,
+                            ),
+                        ],
+                    ),
+                ],
             ),
             ApiResponse(
                 responseCode = "429",
                 description = "동일 IP 기준 이벤트 목록 조회 요청 제한 초과",
-                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = ErrorResponse::class),
+                        examples = [
+                            ExampleObject(
+                                name = "RateLimitExceeded",
+                                value = EVENT_LIST_RATE_LIMIT_EXAMPLE,
+                            ),
+                        ],
+                    ),
+                ],
             ),
         ],
     )
-    @GetMapping
+    @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @RateLimit(limitPerSecond = 10, limitPerMinute = 600)
     fun getEvents(
         @Valid
@@ -72,17 +143,32 @@ class EventController(
             ApiResponse(
                 responseCode = "200",
                 description = "이벤트 상세 조회 성공",
-                content = [Content(schema = Schema(implementation = EventDetailResponse::class))],
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = EventDetailResponse::class),
+                    ),
+                ],
             ),
             ApiResponse(
                 responseCode = "404",
                 description = "존재하지 않는 이벤트",
-                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+                content = [
+                    Content(
+                        mediaType = "application/json",
+                        schema = Schema(implementation = ErrorResponse::class),
+                        examples = [ExampleObject(name = "EventNotFound", value = EVENT_NOT_FOUND_EXAMPLE)],
+                    ),
+                ],
             ),
         ],
     )
-    @GetMapping("/{eventId}")
+    @GetMapping("/{eventId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun getEventDetail(
+        @Parameter(
+            description = "조회할 이벤트 외부 식별자(events.public_id)",
+            example = "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        )
         @PathVariable eventId: String,
     ): ResponseEntity<EventDetailResponse> = ResponseEntity.ok(eventQueryService.getEventDetail(eventId))
 }
