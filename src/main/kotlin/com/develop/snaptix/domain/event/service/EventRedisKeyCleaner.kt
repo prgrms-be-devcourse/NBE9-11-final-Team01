@@ -17,7 +17,10 @@ class EventRedisKeyCleaner(
     fun cleanup(target: EventRedisCleanupTarget) {
         val keys = target.toImmediateCleanupKeys()
 
-        // ✅ 수정: 게이트웨이 캡슐화 파이프라인으로 무효화 위임
+        if (keys.isEmpty()) {
+            return
+        }
+
         val deletedCount = eventLifeCycleRedisGateway.deleteImmediateKeys(keys)
         val streamDeletedCount = cleanupOrderStream(target)
 
@@ -53,7 +56,7 @@ class EventRedisKeyCleaner(
         val groupInfo = eventLifeCycleRedisGateway.getStreamGroupInfo(streamKey, ORDER_WORKERS_GROUP)
         val pendingCount = groupInfo?.pendingCount ?: 0L
 
-        val groupLastDeliveredId = eventLifeCycleRedisGateway.getGroupLastDeliveredId(streamKey, ORDER_WORKERS_GROUP)
+        val groupLastDeliveredId = groupInfo?.lastDeliveredId
         val streamLastGeneratedId = eventLifeCycleRedisGateway.getStreamLastGeneratedId(streamKey)
 
         val hasUndeliveredMessages = streamLength > 0 && groupLastDeliveredId != streamLastGeneratedId

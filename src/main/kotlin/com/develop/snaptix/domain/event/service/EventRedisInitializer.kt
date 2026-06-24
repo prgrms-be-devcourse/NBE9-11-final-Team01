@@ -14,8 +14,6 @@ private val EVENT_INFO_CACHE_TTL: Duration = Duration.ofHours(1)
 
 @Component
 class EventRedisInitializer(
-    // ❌ 기존: private val redisTemplate: StringRedisTemplate 직접 의존 제거 (ArchUnit 규칙 충족)
-    // ✅ 수정: 인프라 레이어 캡슐화 게이트웨이 주입
     private val eventLifeCycleRedisGateway: EventLifeCycleRedisGateway,
     private val objectMapper: ObjectMapper,
 ) {
@@ -27,7 +25,6 @@ class EventRedisInitializer(
         val keys = buildKeys(event, zones)
         val arguments = buildArguments(event, request, zones)
 
-        // ✅ 수정: 저수준 스크립트 직접 실행을 게이트웨이 안전 위임 채널로 교체
         eventLifeCycleRedisGateway.initializeEventInfrastructure(keys, arguments)
     }
 
@@ -69,7 +66,7 @@ class EventRedisInitializer(
         location = request.location,
         startTime = request.startTime.toInstant().toString(),
         endTime = request.endTime.toInstant().toString(),
-        status = "PENDING",
+        status = request.initialStatus.name,
         posterUrl = request.posterUrl.orEmpty(),
     )
 }
