@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.event.controller
 
+import com.develop.snaptix.domain.event.controller.docs.AdminEventApiDocs
 import com.develop.snaptix.domain.event.dto.EventBulkCreateRequest
 import com.develop.snaptix.domain.event.dto.EventBulkCreateResponse
 import com.develop.snaptix.domain.event.dto.EventStatusUpdateRequest
@@ -20,10 +21,10 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/admin/events")
 class AdminEventController(
     private val eventService: EventService,
-) {
+) : AdminEventApiDocs {
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    fun createEvent(
+    override fun createEvent(
         @Valid
         @RequestBody
         request: EventBulkCreateRequest,
@@ -33,7 +34,7 @@ class AdminEventController(
 
     @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{eventId}/status")
-    fun updateEventStatus(
+    override fun updateEventStatus(
         @PathVariable eventId: String,
         @Valid
         @RequestBody
