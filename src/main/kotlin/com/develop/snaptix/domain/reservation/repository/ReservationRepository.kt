@@ -13,11 +13,13 @@ import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
-data class ReservationVerifyView(
-    val id: Long,
-    val eventId: Long,
-)
-
+/**
+ * Exposed 기반 [ReservationQuery] 구현.
+ * orderId(UNIQUE)로 예약 단건을 읽어 소유권·재구성에 필요한 [ReservationView]로 매핑한다.
+ *
+ * NOTE: `transaction {}`은 Exposed Database 연결이 구성돼 있다고 가정한다(스프링 Exposed 스타터).
+ *       reservation 도메인 본개발 시 트랜잭션 경계/조회 관용구를 도메인 컨벤션에 맞춰 통합한다.
+ */
 @Repository
 class ReservationRepository : ReservationQuery {
     override fun findByOrderId(orderId: String): ReservationView? = transaction {
@@ -82,24 +84,6 @@ class ReservationRepository : ReservationQuery {
             it[status] = ReservationStatus.RELEASED.name
             it[updatedAt] = Instant.now()
         }
-<<<<<<< HEAD
-
-    fun findVerifyTarget(
-        reservationId: Long,
-    ): ReservationVerifyView? =
-        transaction {
-            ReservationsTable
-                .selectAll()
-                .where { ReservationsTable.id eq reservationId }
-                .limit(1)
-                .map {
-                    ReservationVerifyView(
-                        id = it[ReservationsTable.id],
-                        eventId = it[ReservationsTable.eventId],
-                    )
-                }.singleOrNull()
-        }
-=======
     }
 
     /**
@@ -126,5 +110,4 @@ class ReservationRepository : ReservationQuery {
             (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
                 (ReservationsTable.createdAt greaterEq holdCutoff)
         )
->>>>>>> 372895c62f841665f7ae0cfb5efa8de6174d26d8
 }
