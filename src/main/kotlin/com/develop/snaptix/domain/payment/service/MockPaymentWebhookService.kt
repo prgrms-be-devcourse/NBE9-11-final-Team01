@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookRequest
 import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookResponse
 import com.develop.snaptix.domain.payment.repository.PaymentReservationRepository
 import com.develop.snaptix.domain.payment.repository.PaymentWebhookProcessResult
+import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.OrderHoldRedisGateway
@@ -28,7 +29,7 @@ class MockPaymentWebhookService(
                 MockPaymentStatus.FAIL -> paymentReservationRepository.cancelIfPending(request.orderId)
             } ?: throw BusinessException(ErrorCode.ORDER_NOT_FOUND)
 
-        if (result.processed) {
+        if (shouldRunSideEffects(request.paymentStatus, result)) {
             releaseHold(orderId)
             compensateStockIfPaymentFailed(orderId, request.paymentStatus, result)
         }
@@ -44,6 +45,20 @@ class MockPaymentWebhookService(
 
     private fun releaseHold(orderId: UUID) {
         orderHoldRedisGateway.delete(orderId)
+    }
+
+    private fun shouldRunSideEffects(
+        paymentStatus: MockPaymentStatus,
+        result: PaymentWebhookProcessResult,
+    ): Boolean {
+        if (result.processed) {
+            return true
+        }
+
+        return when (paymentStatus) {
+            MockPaymentStatus.SUCCESS -> result.reservation.status == ReservationStatus.CONFIRMED
+            MockPaymentStatus.FAIL -> result.reservation.status == ReservationStatus.CANCELLED
+        }
     }
 
     private fun compensateStockIfPaymentFailed(

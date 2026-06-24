@@ -156,6 +156,27 @@ class MockPaymentWebhookIntegrationTest(
     }
 
     @Test
+    fun `결제 실패 Webhook 재시도는 보상되지 않은 재고를 다시 보상한다`() {
+        val seed = insertPaymentReservation(status = ReservationStatus.CANCELLED)
+        createOrderHold(seed.orderId)
+        seedClaimedStock(seed, stock = 0)
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                content = webhookBody(seed.orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.processed") { value(false) }
+            }
+
+        assertThat(findReservationStatus(seed.orderId)).isEqualTo(ReservationStatus.CANCELLED.name)
+        assertThat(redisTemplate.opsForValue().get("ZONE:${seed.zoneId}:stock")).isEqualTo("1")
+        assertThat(redisTemplate.opsForSet().isMember("ZONE:${seed.zoneId}:claimed", seed.orderId)).isFalse()
+        assertThat(redisTemplate.hasKey("ORDER_HOLD:${seed.orderId}")).isFalse()
+    }
+
+    @Test
     fun `존재하지 않는 주문의 Webhook은 404를 반환한다`() {
         mockMvc
             .post(WEBHOOK_PATH) {
