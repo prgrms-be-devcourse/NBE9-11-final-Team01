@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.zone.repository
 
+import com.develop.snaptix.domain.zone.dto.ZoneWithEventId
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
@@ -48,6 +49,20 @@ class ZoneRepository {
                 ZoneCapacity(
                     id = it[ZonesTable.id],
                     publicId = it[ZonesTable.publicId],
+                    totalCapacity = it[ZonesTable.totalCapacity],
+                )
+            }
+    }
+
+    fun findWithEventIdById(zoneId: Long): ZoneWithEventId? = transaction {
+        ZonesTable
+            .selectAll()
+            .where { ZonesTable.id eq zoneId }
+            .singleOrNull()
+            ?.let {
+                ZoneWithEventId(
+                    id = it[ZonesTable.id],
+                    eventId = it[ZonesTable.eventId],
                     totalCapacity = it[ZonesTable.totalCapacity],
                 )
             }
