@@ -83,6 +83,7 @@ data class EventListZoneRecord(
     val eventId: Long,
     val zoneId: Long,
     val unitPrice: Int,
+    val totalCapacity: Int,
 )
 
 data class EventDetailQueryResult(
@@ -268,6 +269,7 @@ class EventRepository {
                 eventId = it[ZonesTable.eventId],
                 zoneId = it[ZonesTable.id],
                 unitPrice = it[ZonesTable.unitPrice],
+                totalCapacity = it[ZonesTable.totalCapacity], // 추가
             )
         }
 
