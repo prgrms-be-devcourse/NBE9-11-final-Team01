@@ -1,4 +1,3 @@
-// 위치: src/main/kotlin/com/develop/snaptix/global/aop/aspect/CacheAsideAspect.kt
 package com.develop.snaptix.global.aop.aspect
 
 import com.develop.snaptix.global.aop.annotation.RedisCacheAside
@@ -136,9 +135,9 @@ class CacheAsideAspect(
             redisCacheGateway.evict(key)
         } catch (e: DataAccessException) {
             // 삭제 실패는 TTL 만료로 자연 해소 — 진행은 계속
-            logWarn("CACHE_GET", "DEL_FAIL", key, traceId, elapsed(start), e)
+            logWarn("CACHE_INVALIDATE", "DEL_FAIL", key, traceId, elapsed(start), e)
         } catch (e: RedisUnavailableException) {
-            logWarn("CACHE_GET", "DEL_FAIL", key, traceId, elapsed(start), e)
+            logWarn("CACHE_INVALIDATE", "DEL_FAIL", key, traceId, elapsed(start), e)
         }
     }
 

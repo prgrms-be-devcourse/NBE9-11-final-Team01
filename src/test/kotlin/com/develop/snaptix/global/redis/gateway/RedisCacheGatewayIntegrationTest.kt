@@ -49,10 +49,9 @@ class RedisCacheGatewayIntegrationTest {
 
     @AfterEach
     fun tearDown() {
-        redis.connectionFactory
-            ?.connection
-            ?.serverCommands()
-            ?.flushDb()
+        redis.execute { connection ->
+            connection.serverCommands().flushDb()
+        }
     }
 
     @Test
