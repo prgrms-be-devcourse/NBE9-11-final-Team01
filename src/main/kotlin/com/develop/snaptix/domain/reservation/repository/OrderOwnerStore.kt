@@ -1,9 +1,10 @@
 package com.develop.snaptix.domain.reservation.repository
 
 import com.develop.snaptix.global.aop.type.RedisAction
+import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Repository
+import java.util.UUID
 
 /**
  * PENDING(예약 행 생성 전) 단계의 주문 소유권 조회 포트.
@@ -30,14 +31,11 @@ fun interface OrderOwnerStore {
  */
 @Repository
 class RedisOrderOwnerStore(
-    private val redis: StringRedisTemplate,
     private val executor: ResilientRedisExecutor,
+    private val ownershipRedisGateway: OwnershipRedisGateway,
 ) : OrderOwnerStore {
     override fun findOwnerUserId(orderId: String): Long? = executor.execute(RedisAction.OWNERSHIP) {
-        redis.opsForValue().get("$OWNER_KEY_PREFIX$orderId")?.toLongOrNull()
-    }
-
-    companion object {
-        private const val OWNER_KEY_PREFIX = "order:owner:"
+        val orderUuid = UUID.fromString(orderId)
+        ownershipRedisGateway.get(orderUuid)
     }
 }
