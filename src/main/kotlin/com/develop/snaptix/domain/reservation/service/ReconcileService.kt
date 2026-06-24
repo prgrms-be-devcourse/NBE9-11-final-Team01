@@ -83,11 +83,13 @@ class ReconcileService(
         return done
     }
 
+    // runCatching은 error도 잡기에 사용X -> try catch로
+    @Suppress("TooGenericExceptionCaught")
     private fun writeAudit(
         reservation: ExpiredReservation,
         compensated: Boolean,
     ) {
-        runCatching {
+        try {
             auditLogRepository.insert(
                 actorId = null,
                 actionType = RedisAction.RECONCILE_RUN.name,
@@ -97,14 +99,42 @@ class ReconcileService(
                     buildJsonObject {
                         put("orderId", reservation.orderId)
                         put("zoneId", reservation.zoneId)
-                        put("compensated", compensated) // ← 필드명도 compensated로 정정
+                        put("compensated", compensated)
                     },
             )
-        }.onFailure { e ->
+        } catch (e: Exception) {
+            // Throwable 아님 → Error는 전파
             logger.atWarn {
                 message = "Audit log insert failed (compensation already applied)"
                 cause = e
                 payload = mapOf("reservationId" to reservation.id)
+            }
+        }
+    }
+
+    // controller 관리자가 정산했다는 기록을 남길려는 것 target은 X(report에 포함)
+    @Suppress("TooGenericExceptionCaught")
+    internal fun writeAdminAudit(
+        actorId: Long,
+        report: ReconcileReport,
+    ) {
+        try {
+            auditLogRepository.insert(
+                actorId = actorId,
+                actionType = "ADMIN_RECONCILE",
+                targetType = null,
+                targetId = null,
+                details =
+                    buildJsonObject {
+                        put("released", report.released)
+                        put("compensated", report.compensated)
+                        put("failed", report.failed)
+                    },
+            )
+        } catch (e: Exception) {
+            logger.atWarn {
+                message = "ADMIN_RECONCILE audit insert failed"
+                cause = e
             }
         }
     }
