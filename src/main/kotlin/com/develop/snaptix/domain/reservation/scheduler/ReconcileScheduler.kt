@@ -18,17 +18,26 @@ class ReconcileScheduler(
 ) {
     private val logger = KotlinLogging.logger {}
 
-    @Scheduled(cron = "\${reconcile.scheduler-cron}")
+    @Suppress("TooGenericExceptionCaught")
+    @Scheduled(cron = "\${reconcile.scheduler-cron}") // 기본값 포함
     fun reconcile() {
-        val report = reconcileService.reconcileExpired(Instant.now(clock))
-        logger.atInfo {
-            message = "Scheduled reconcile finished"
-            payload =
-                mapOf(
-                    "released" to report.released,
-                    "compensated" to report.compensated,
-                    "failed" to report.failed,
-                )
+        try {
+            val report = reconcileService.reconcileExpired(Instant.now(clock))
+            logger.atInfo {
+                message = "Scheduled reconcile finished"
+                payload =
+                    mapOf(
+                        "released" to report.released,
+                        "compensated" to report.compensated,
+                        "failed" to report.failed,
+                    )
+            }
+        } catch (e: Exception) {
+            logger.atError {
+                message = "Scheduled reconcile failed unexpectedly"
+                cause = e
+                payload = mapOf("clock" to clock.instant().toString())
+            }
         }
     }
 }
