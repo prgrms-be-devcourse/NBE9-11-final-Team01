@@ -18,6 +18,7 @@ enum class DecreaseResult { OK, ALREADY, SOLD_OUT }
  *
  * - [decreaseAndClaim]: 차감과 claimed 기록을 단일 원자 Lua로 → 동시 요청에도 차감 1회.
  * - [compensate]: orderId가 claimed에 있을 때만 +1 & SREM → 이중 보상 방지.
+ * - [releaseClaim]: 성공 확정 시 stock은 유지하고 claimed만 제거.
  * - [get]: 현재 재고 조회(드리프트 점검). 키 부재 시 null.
  * - [correctStock]: 드리프트 누수 절대 SET(stock만, claimed 미접촉).
  * - [rebuild]: 상태 재구축(stock SET + claimed 원자 덮어쓰기, Story 13.2).
@@ -68,6 +69,17 @@ class StockRedisGateway(
                 orderId.toString(),
             )
         compensated == 1L
+    }
+
+    /**
+     * 성공 확정: stock은 유지하고 claimed에서 orderId만 제거한다.
+     * @return true(제거됨) / false(claimed에 없음)
+     */
+    fun releaseClaim(
+        zoneId: Long,
+        orderId: UUID,
+    ): Boolean = executor.execute(RedisAction.CLAIM_RELEASE) {
+        redis.opsForSet().remove(keys.claimed(zoneId), orderId.toString()) == 1L
     }
 
     /** 현재 재고. 키 부재 시 null(드리프트 조회용). */

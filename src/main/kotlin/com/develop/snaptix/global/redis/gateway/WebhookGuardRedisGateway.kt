@@ -21,6 +21,11 @@ class WebhookGuardRedisGateway(
     private val ttl: RedisTtlProperties,
     private val executor: ResilientRedisExecutor,
 ) {
+    /** 처리 완료 여부 조회. true면 Webhook 재전송을 빠르게 스킵한다. */
+    fun isProcessed(orderId: UUID): Boolean = executor.execute(RedisAction.WEBHOOK_IDEMPOTENCY) {
+        redis.hasKey(keys.webhookProcessed(orderId)) ?: false
+    }
+
     /**
      * 처리 완료 멱등 등록.
      * @return true(첫 등록) / false(이미 처리됨 → 스킵)
