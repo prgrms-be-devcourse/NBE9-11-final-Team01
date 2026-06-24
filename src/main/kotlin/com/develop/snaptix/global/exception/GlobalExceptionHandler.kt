@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.authorization.AuthorizationDeniedException
 import org.springframework.web.HttpMediaTypeNotSupportedException
 import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
@@ -189,6 +190,19 @@ class GlobalExceptionHandler {
             .status(HttpStatus.TOO_MANY_REQUESTS)
             .header("Retry-After", ex.retryAfterSeconds.toString())
             .body(ex.toErrorResponse())
+    }
+
+    // ✅ 메서드 레벨 인가 실패 (@PreAuthorize 등)
+    @ExceptionHandler(AuthorizationDeniedException::class)
+    fun handleAuthorizationDenied(
+        ex: AuthorizationDeniedException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ErrorResponse> {
+        logger.warn { "[ACCESS_DENIED] message=${ex.message}, path=${request.requestURI}" }
+
+        return ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
+            .body(ErrorCode.ACCESS_DENIED.toErrorResponse())
     }
 
     // ✅ Fallback: 예상치 못한 모든 예외 (보안 고려 — 스택트레이스 노출 금지)
