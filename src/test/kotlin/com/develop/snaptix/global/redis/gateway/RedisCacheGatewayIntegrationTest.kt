@@ -13,6 +13,8 @@ import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.mysql.MySQLContainer
+import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 import java.util.UUID
 
@@ -30,20 +32,33 @@ class RedisCacheGatewayIntegrationTest {
     private lateinit var keyFactory: RedisKeyFactory
 
     companion object {
-        private const val REDIS_PORT = 6379
-
+        // 1. MySQL 컨테이너 추가
         @Container
         @JvmStatic
-        val redisContainer =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(REDIS_PORT)
-            }
+        val mysql = MySQLContainer("mysql:9.7").apply {
+            withDatabaseName("snaptix")
+            withUsername("snaptix")
+            withPassword("snaptix1234")
+        }
+
+        // 2. 기존 Redis 컨테이너 유지
+        @Container
+        @JvmStatic
+        val redisContainer = GenericContainer(DockerImageName.parse("redis:8.8.0")).apply {
+            withExposedPorts(6379)
+        }
 
         @DynamicPropertySource
         @JvmStatic
-        fun redisProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.data.redis.host", redisContainer::getHost)
-            registry.add("spring.data.redis.port") { redisContainer.getMappedPort(REDIS_PORT) }
+        fun overrideProperties(registry: DynamicPropertyRegistry) {
+            // 3. MySQL Datasource 프로퍼티 추가
+            registry.add("spring.datasource.url", mysql::getJdbcUrl)
+            registry.add("spring.datasource.username", mysql::getUsername)
+            registry.add("spring.datasource.password", mysql::getPassword)
+
+            // 4. Redis 프로퍼티 유지
+            registry.add("spring.data.redis.host") { redisContainer.host }
+            registry.add("spring.data.redis.port") { redisContainer.firstMappedPort.toString() }
         }
     }
 
