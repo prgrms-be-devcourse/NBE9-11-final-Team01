@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*
 class TicketVerifyController(
     private val service: TicketVerifyService,
 ) {
+
     @PostMapping("/verify")
     @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     fun verify(

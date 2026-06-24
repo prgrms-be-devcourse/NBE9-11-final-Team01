@@ -1,7 +1,6 @@
 package com.develop.snaptix.staff.ticket
 
 import com.develop.snaptix.domain.event.repository.EventRepository
-import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.domain.ticket.repository.TicketRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
@@ -17,25 +16,39 @@ import java.time.Instant
 class TicketVerifyService(
     private val eventRepository: EventRepository,
     private val ticketRepository: TicketRepository,
-    private val reservationRepository: ReservationRepository,
+    private val verifyQuery: TicketVerifyQuery,
 ) {
+
     @Transactional
-    fun verify(request: TicketVerifyRequest): TicketVerifyResponse {
-        val event = eventRepository.findByPublicId(request.eventId)
-            ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+    fun verify(
+        request: TicketVerifyRequest,
+    ): TicketVerifyResponse {
 
-        val ticket = ticketRepository.findByTicketCode(request.ticketCode)
-            ?: throw BusinessException(ErrorCode.TICKET_NOT_FOUND)
+        val event =
+            eventRepository.findByPublicId(request.eventId)
+                ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
 
-        val reservation = reservationRepository.findVerifyTarget(ticket.reservationId)
-            ?: throw IllegalStateException("Reservation not found: ${ticket.reservationId}")
+        val ticket =
+            ticketRepository.findByTicketCode(request.ticketCode)
+                ?: throw BusinessException(ErrorCode.TICKET_NOT_FOUND)
 
-        if (reservation.eventId != event.id) {
+        val reservationEventId =
+            verifyQuery.findReservationEventId(ticket.reservationId)
+                ?: throw IllegalStateException(
+                    "Reservation not found: ${ticket.reservationId}",
+                )
+
+        if (reservationEventId != event.id) {
             throw EventMismatchException()
         }
 
         val now = Instant.now()
-        val updated = ticketRepository.markUsedIfIssued(request.ticketCode, now)
+
+        val updated =
+            verifyQuery.markUsedIfIssued(
+                request.ticketCode,
+                now,
+            )
 
         if (updated == 0) {
             throw TicketAlreadyUsedException()
