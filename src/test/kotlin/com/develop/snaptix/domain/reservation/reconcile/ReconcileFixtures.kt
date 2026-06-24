@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
+import com.develop.snaptix.domain.ticket.entity.TicketsTable
 import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.domain.user.entity.UsersTable
 import com.develop.snaptix.domain.zone.entity.ZonesTable
@@ -29,6 +30,7 @@ object ReconcileFixtures {
     )
 
     fun cleanAll() = transaction {
+        TicketsTable.deleteAll()
         ReservationsTable.deleteAll()
         AuditLogsTable.deleteAll()
         ZonesTable.deleteAll()
