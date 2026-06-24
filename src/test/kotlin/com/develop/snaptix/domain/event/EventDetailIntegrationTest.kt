@@ -255,8 +255,8 @@ class EventDetailIntegrationTest(
         assertThat(cached?.name).isEqualTo("2027 SnapTix Concert")
         assertThat(cached?.description).isEqualTo("인기 아티스트 콘서트입니다.")
         assertThat(cached?.location).isEqualTo("올림픽공원 체조경기장")
-        assertThat(cached?.startTime).isEqualTo("2027-12-25T10:00:00Z")
-        assertThat(cached?.endTime).isEqualTo("2027-12-25T13:00:00Z")
+        assertThat(cached?.startTime).isEqualTo(event.startTime.toString())
+        assertThat(cached?.endTime).isEqualTo(event.endTime.toString())
         assertThat(cached?.status).isEqualTo("ON_SALE")
         assertThat(cached?.posterUrl).isEqualTo("https://cdn.snaptix.kr/events/detail.jpg")
     }
@@ -326,14 +326,16 @@ class EventDetailIntegrationTest(
 
     private fun insertEventWithZones(status: EventStatus = EventStatus.ON_SALE): CreatedEvent = transaction {
         val eventPublicId = UUID.randomUUID().toString()
+        val startTime = Instant.parse("2027-12-25T10:00:00Z")
+        val endTime = Instant.parse("2027-12-25T13:00:00Z")
         val eventId =
             EventsTable.insert {
                 it[EventsTable.publicId] = eventPublicId
                 it[EventsTable.name] = "2027 SnapTix Concert"
                 it[EventsTable.description] = "인기 아티스트 콘서트입니다."
                 it[EventsTable.location] = "올림픽공원 체조경기장"
-                it[EventsTable.startTime] = Instant.parse("2027-12-25T10:00:00Z")
-                it[EventsTable.endTime] = Instant.parse("2027-12-25T13:00:00Z")
+                it[EventsTable.startTime] = startTime
+                it[EventsTable.endTime] = endTime
                 it[EventsTable.status] = status.name
                 it[EventsTable.posterUrl] = "https://cdn.snaptix.kr/events/detail.jpg"
             }[EventsTable.id]
@@ -346,6 +348,8 @@ class EventDetailIntegrationTest(
         CreatedEvent(
             id = eventId,
             publicId = eventPublicId,
+            startTime = startTime,
+            endTime = endTime,
             zones = zones,
         )
     }
@@ -408,6 +412,8 @@ class EventDetailIntegrationTest(
     private data class CreatedEvent(
         val id: Long,
         val publicId: String,
+        val startTime: Instant,
+        val endTime: Instant,
         val zones: List<CreatedZone>,
     )
 
