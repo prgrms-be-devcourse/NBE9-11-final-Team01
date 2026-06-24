@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.reservation.reconcile
 import com.develop.snaptix.domain.auditlog.repository.AuditLogRepository
 import com.develop.snaptix.domain.reservation.repository.ExpiredReservation
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
+import com.develop.snaptix.domain.reservation.service.ReconcileReport
 import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
@@ -112,5 +113,17 @@ class ReconcileServiceUnitTest {
 
         assertThat(report.compensated).isEqualTo(1) // 감사 실패가 보상 카운트를 깨지 않음
         assertThat(report.failed).isEqualTo(0)
+    }
+
+    @Test
+    fun `writeAdminAudit는 감사 insert가 실패해도 예외를 전파하지 않는다(best-effort)`() {
+        every {
+            auditLogRepository.insert(1L, "ADMIN_RECONCILE", null, null, any())
+        } throws RuntimeException("audit db down")
+
+        // 예외가 전파되지 않으면 통과(아무 throw 없이 끝남)
+        service.writeAdminAudit(actorId = 1L, report = ReconcileReport(released = 1, compensated = 1, failed = 0))
+
+        verify { auditLogRepository.insert(1L, "ADMIN_RECONCILE", null, null, any()) }
     }
 }
