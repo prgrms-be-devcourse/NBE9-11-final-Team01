@@ -155,6 +155,33 @@ enum class ErrorCode(
         "이벤트 상태가 변경되어 요청을 처리할 수 없습니다.",
     ),
 
+    // ==================== 결제 (PAYMENT) ====================
+    ORDER_NOT_FOUND(
+        HttpStatus.NOT_FOUND,
+        "PAYMENT-001",
+        "해당 주문을 찾을 수 없습니다.",
+    ),
+    ORDER_ACCESS_DENIED(
+        HttpStatus.FORBIDDEN,
+        "PAYMENT-002",
+        "해당 주문에 접근할 권한이 없습니다.",
+    ),
+    ORDER_NOT_PAYABLE(
+        HttpStatus.CONFLICT,
+        "PAYMENT-003",
+        "결제 가능한 주문 상태가 아닙니다.",
+    ),
+    ORDER_HOLD_EXPIRED(
+        HttpStatus.CONFLICT,
+        "PAYMENT-004",
+        "결제 대기 시간이 초과되었습니다. 다시 주문을 시도해주세요.",
+    ),
+    PAYMENT_REQUEST_FAILED(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        "PAYMENT-005",
+        "결제 요청 중 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+    ),
+
     // ==================== 티켓 (TICKET) ====================
     // Path Variable이 UUID 형식(36자리)이 아닌 경우
     INVALID_TICKET_CODE(
