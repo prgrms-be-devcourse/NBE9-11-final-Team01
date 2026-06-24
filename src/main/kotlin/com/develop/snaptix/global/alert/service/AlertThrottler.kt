@@ -61,11 +61,10 @@ class AlertThrottler(
 
     internal fun activeThrottleKeyCount(): Int = lastSentAtByKey.size
 
-    private fun AlertContext.throttleKey(): String =
-        listOfNotNull(
-            trigger.name,
-            eventId,
-            zoneId,
-            fields["circuitName"]?.toString(),
-        ).joinToString(":")
+    private fun AlertContext.throttleKey(): String = listOfNotNull(
+        trigger.name,
+        eventId,
+        zoneId,
+        fields["circuitName"]?.toString(),
+    ).joinToString(":")
 }

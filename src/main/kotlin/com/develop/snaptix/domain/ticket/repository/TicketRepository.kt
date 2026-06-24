@@ -23,6 +23,7 @@ data class TicketRecord(
 
 @Repository
 class TicketRepository {
+<<<<<<< HEAD
     fun findByTicketCode(ticketCode: String): TicketRecord? =
         transaction {
             TicketsTable.selectAll()
@@ -38,9 +39,28 @@ class TicketRepository {
                 .singleOrNull()
                 ?.toRecord()
         }
+=======
+    /** 현장 QR의 ticketCode(UUID)로 티켓을 조회한다(검표 기준). */
+    fun findByTicketCode(ticketCode: String): TicketRecord? = transaction {
+        TicketsTable
+            .selectAll()
+            .where { TicketsTable.ticketCode eq ticketCode }
+            .singleOrNull()
+            ?.toRecord()
+    }
+
+    fun findById(id: Long): TicketRecord? = transaction {
+        TicketsTable
+            .selectAll()
+            .where { TicketsTable.id eq id }
+            .singleOrNull()
+            ?.toRecord()
+    }
+>>>>>>> 372895c62f841665f7ae0cfb5efa8de6174d26d8
 
     fun markUsedIfIssued(
         ticketCode: String,
+<<<<<<< HEAD
         now: Instant,
     ): Int = transaction {
         TicketsTable.update({
@@ -50,16 +70,28 @@ class TicketRepository {
             it[status] = "USED"
             it[usedAt] = now
         }
+=======
+        status: String,
+        issuedAt: Instant? = null,
+        usedAt: Instant? = null,
+    ): Long = transaction {
+        TicketsTable.insert {
+            it[TicketsTable.reservationId] = reservationId
+            it[TicketsTable.ticketCode] = ticketCode
+            it[TicketsTable.status] = status
+            it[TicketsTable.issuedAt] = issuedAt
+            it[TicketsTable.usedAt] = usedAt
+        } get TicketsTable.id
+>>>>>>> 372895c62f841665f7ae0cfb5efa8de6174d26d8
     }
 
-    private fun ResultRow.toRecord() =
-        TicketRecord(
-            id = this[TicketsTable.id],
-            reservationId = this[TicketsTable.reservationId],
-            ticketCode = this[TicketsTable.ticketCode],
-            status = this[TicketsTable.status],
-            version = this[TicketsTable.version],
-            issuedAt = this[TicketsTable.issuedAt],
-            usedAt = this[TicketsTable.usedAt],
-        )
+    private fun ResultRow.toRecord() = TicketRecord(
+        id = this[TicketsTable.id],
+        reservationId = this[TicketsTable.reservationId],
+        ticketCode = this[TicketsTable.ticketCode],
+        status = this[TicketsTable.status],
+        version = this[TicketsTable.version],
+        issuedAt = this[TicketsTable.issuedAt],
+        usedAt = this[TicketsTable.usedAt],
+    )
 }

@@ -8,6 +8,9 @@ package com.develop.snaptix.global.aop.type
  *   - XREADGROUP / XACK / MINID_TRIM / CLAIM_REPROCESS 추가 (Stream Consumer Group)
  *   - INGEST_BACKPRESSURE / COMPENSATE_STOCK / STOCK_DRIFT_FIX 추가 (v3.1 신규)
  *   - CACHE_INVALIDATE 추가 (event:info 무효화 추적용)
+ *   - OWNERSHIP 추가 (order:owner PENDING 단계 소유권 — ISSUE-08)
+ *   - PAYMENT_APPROVE 추가 (payment:approve 이중 클릭 가드 — ISSUE-09)
+ *   - STOCK_GET / STOCK_REBUILD 추가 (재고 조회·재구축 — ISSUE-05-EXT)
  */
 enum class RedisAction {
     // ── 주문 큐 (Stream) ──────────────────────────────────────────────
@@ -38,8 +41,14 @@ enum class RedisAction {
     /** 재고 보상 +1 (SOLD_OUT·중복·DB롤백 터미널 경로 공통) */
     COMPENSATE_STOCK,
 
-    /** 드리프트 감지 후 보정 SET */
+    /** 드리프트 누수 보정 SET (stock만, claimed 미접촉) */
     STOCK_DRIFT_FIX,
+
+    /** 재고 조회 GET (드리프트 점검용) */
+    STOCK_GET,
+
+    /** 상태 재구축 — stock SET + claimed 원자 덮어쓰기 (Story 13.2) */
+    STOCK_REBUILD,
 
     // ── ORDER_HOLD ────────────────────────────────────────────────────
 
@@ -59,6 +68,16 @@ enum class RedisAction {
 
     /** webhook:processed:{orderId} SET NX */
     WEBHOOK_IDEMPOTENCY,
+
+    // ── 결제 가드 ─────────────────────────────────────────────────────
+
+    /** payment:approve:{orderId} SET NX — 결제 승인 이중 클릭 차단 */
+    PAYMENT_APPROVE,
+
+    // ── 소유권 ────────────────────────────────────────────────────────
+
+    /** order:owner:{orderId} SET/GET/DEL — PENDING 단계 주문 소유권 */
+    OWNERSHIP,
 
     // ── 정합성 배치 ───────────────────────────────────────────────────
 

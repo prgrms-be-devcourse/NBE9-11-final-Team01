@@ -97,10 +97,18 @@ class EventService(
                 val event =
                     eventRepository.findByPublicId(eventId)
                         ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
-                val currentStatus = EventStatus.valueOf(event.status)
+                val currentStatus = event.status.toEventStatus()
 
                 validateStatusTransition(currentStatus, request.status)
-                eventRepository.updateStatusByPublicId(eventId, request.status)
+                val updatedRows =
+                    eventRepository.updateStatusByPublicId(
+                        publicId = eventId,
+                        currentStatus = currentStatus,
+                        status = request.status,
+                    )
+                if (updatedRows != 1) {
+                    throw BusinessException(ErrorCode.EVENT_STATUS_CONFLICT)
+                }
 
                 if (request.status == EventStatus.CLOSED) {
                     cleanupTarget =
@@ -172,4 +180,9 @@ class EventService(
             )
         }
     }
+
+    private fun String.toEventStatus(): EventStatus = runCatching { EventStatus.valueOf(this) }
+        .getOrElse {
+            throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "저장된 이벤트 상태가 올바르지 않습니다. 현재 상태: $this")
+        }
 }

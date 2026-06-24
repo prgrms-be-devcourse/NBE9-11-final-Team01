@@ -22,15 +22,14 @@ class SseExecutorConfig {
         @Value("\${realtime.sse.send.core-pool-size:4}") corePoolSize: Int,
         @Value("\${realtime.sse.send.max-pool-size:16}") maxPoolSize: Int,
         @Value("\${realtime.sse.send.queue-capacity:1000}") queueCapacity: Int,
-    ): Executor =
-        ThreadPoolTaskExecutor().apply {
-            this.corePoolSize = corePoolSize
-            this.maxPoolSize = maxPoolSize
-            this.queueCapacity = queueCapacity
-            setThreadNamePrefix("sse-send-")
-            setRejectedExecutionHandler(ThreadPoolExecutor.CallerRunsPolicy())
-            initialize()
-        }
+    ): Executor = ThreadPoolTaskExecutor().apply {
+        this.corePoolSize = corePoolSize
+        this.maxPoolSize = maxPoolSize
+        this.queueCapacity = queueCapacity
+        setThreadNamePrefix("sse-send-")
+        setRejectedExecutionHandler(ThreadPoolExecutor.CallerRunsPolicy())
+        initialize()
+    }
 
     companion object {
         const val SSE_SEND_EXECUTOR = "sseSendExecutor"

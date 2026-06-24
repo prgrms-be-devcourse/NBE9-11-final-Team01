@@ -1,3 +1,4 @@
+// 위치: src/main/kotlin/com/develop/snaptix/global/aop/aspect/IdempotencyAspect.kt
 package com.develop.snaptix.global.aop.aspect
 
 import com.develop.snaptix.global.aop.annotation.IdempotencyTarget
@@ -5,7 +6,7 @@ import com.develop.snaptix.global.aop.type.AspectOrder
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.redis.IdempotencyConflictException
-import com.develop.snaptix.global.redis.script.COMPARE_AND_DELETE_SCRIPT
+import com.develop.snaptix.global.redis.gateway.IdempotencyRedisGateway
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.aspectj.lang.ProceedingJoinPoint
@@ -13,44 +14,29 @@ import org.aspectj.lang.annotation.Around
 import org.aspectj.lang.annotation.Aspect
 import org.springframework.core.annotation.Order
 import org.springframework.dao.DataAccessException
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
-import java.time.Duration
+import java.util.UUID
 
 /**
- * @Idempotent 메서드에서 동일 사용자 + 동일 이벤트의 중복 주문을
- * Redis SET NX로 원자 차단하는 Aspect.
+ * @Idempotent 메서드에서 동일 사용자 + 동일 이벤트의 중복 주문을 원자 차단하는 Aspect.
  *
  * 실행 순서: CB(1) → RateLimit(2) → [Idempotency(3)] → RedisLogging(4)
  *
  * 책임 범위:
- *   - 최초 락 획득 (SET NX, TTL 8분)
- *   - 인게스트 실패 시 자기 키만 정리 (compare-and-delete)
- *   - Redis 장애 시 fail-open (CB가 Order=1에서 대부분 선차단)
+ *   - 최초 락 획득 / 인게스트 실패 시 자기 키만 정리 / Redis 장애 시 fail-open
  *
- * 이후 생애주기는 각 레이어 담당:
- *   - ORDER_HOLD 생성(워커)    → PEXPIRE key 300_000
- *   - CONFIRMED(결제 확정)     → SET key COMPLETED KEEPTTL
- *   - CANCELLED / RELEASED    → compare-and-delete(orderId)
+ * 실제 Redis 연산(SET NX·compare-and-delete·TTL)은 [IdempotencyRedisGateway]에 위임한다
+ * (메인 명세서 §4.5 — 아스펙트는 경계·정책, 게이트웨이는 Redis 연산·서킷·로깅).
+ * 이후 생애주기(워커 재앵커링·CONFIRMED COMPLETED·CANCELLED/RELEASED CAD)는 각 레이어가 게이트웨이로 직접 수행.
  */
 @Aspect
 @Component
 @Order(AspectOrder.IDEMPOTENCY)
 class IdempotencyAspect(
-    private val redis: StringRedisTemplate,
+    private val idempotencyGateway: IdempotencyRedisGateway,
 ) {
     companion object {
-        /** 인게스트 봉투 TTL: 예상 최대 큐 대기 + 홀드 5분 + 여유 (권장 8분) */
-        private val ENVELOPE_TTL = Duration.ofMinutes(8)
-
-        private val cadScript =
-            DefaultRedisScript<Long>().apply {
-                setScriptText(COMPARE_AND_DELETE_SCRIPT)
-                setResultType(Long::class.java)
-            }
-
         private val log = KotlinLogging.logger {}
     }
 
@@ -58,15 +44,15 @@ class IdempotencyAspect(
     fun around(jp: ProceedingJoinPoint): Any? {
         val userId = extractUserId()
         val target = extractTarget(jp)
-        val key = "idempotency:order:$userId:${target.eventId}"
+        val eventId = UUID.fromString(target.eventId)
+        val orderId = UUID.fromString(target.orderId)
 
-        val acquired = tryAcquire(key, target.orderId, userId, target.eventId)
-        if (!acquired) {
+        if (!tryAcquire(userId, eventId, orderId)) {
             log.warn {
                 jsonLog(
                     "action" to "IDEMPOTENCY_CONFLICT",
                     "userId" to userId,
-                    "eventId" to target.eventId,
+                    "eventId" to eventId,
                 )
             }
             throw IdempotencyConflictException()
@@ -77,7 +63,7 @@ class IdempotencyAspect(
             jp.proceed()
         } catch (e: Throwable) {
             // 인게스트 실패 시 자기 키만 정리 → 재시도 허용
-            compareAndDelete(key, target.orderId)
+            cleanup(userId, eventId, orderId)
             throw e
         }
     }
@@ -85,53 +71,49 @@ class IdempotencyAspect(
     // ── private helpers ────────────────────────────────────────────────────
 
     /**
-     * Redis SET NX 시도.
-     * DataAccessException 발생 시 fail-open(true 반환) — CB가 대부분 선차단하므로 안전.
+     * 멱등 키 선점(게이트웨이 위임).
+     * DataAccessException 발생 시 fail-open(true) — 서킷 OPEN은 상위 CB 아스펙트가 선차단한다.
      */
     private fun tryAcquire(
-        key: String,
-        orderId: String,
         userId: Long,
-        eventId: String,
-    ): Boolean =
-        try {
-            redis.opsForValue().setIfAbsent(key, orderId, ENVELOPE_TTL) ?: false
-        } catch (e: DataAccessException) {
-            log.warn(e) {
-                jsonLog(
-                    "action" to "IDEMPOTENCY_CHECK",
-                    "result" to "SKIP_FAIL_OPEN",
-                    "userId" to userId,
-                    "eventId" to eventId,
-                )
-            }
-            true // fail-open
+        eventId: UUID,
+        orderId: UUID,
+    ): Boolean = try {
+        idempotencyGateway.tryAcquire(userId, eventId, orderId)
+    } catch (e: DataAccessException) {
+        log.warn(e) {
+            jsonLog(
+                "action" to "IDEMPOTENCY_CHECK",
+                "result" to "SKIP_FAIL_OPEN",
+                "userId" to userId,
+                "eventId" to eventId,
+            )
         }
+        true
+    }
 
     /**
-     * Lua compare-and-delete: 값이 orderId와 일치할 때만 DEL.
-     * 타 주문이 이미 키를 재점유했다면 건드리지 않는다.
+     * 값이 자기 orderId일 때만 삭제(게이트웨이 위임). 정리 실패는 TTL 만료로 자연 해소.
      */
-    private fun compareAndDelete(
-        key: String,
-        orderId: String,
+    private fun cleanup(
+        userId: Long,
+        eventId: UUID,
+        orderId: UUID,
     ) {
         try {
-            redis.execute(cadScript, listOf(key), orderId)
+            idempotencyGateway.compareAndDelete(userId, eventId, orderId)
         } catch (e: DataAccessException) {
-            // 키 정리 실패는 TTL 만료로 자연 해소됨 — 재시도 억제보다 유실이 더 큰 피해
             log.warn(e) {
                 jsonLog(
                     "action" to "IDEMPOTENCY_CAD_FAIL",
-                    "key" to key,
+                    "userId" to userId,
+                    "eventId" to eventId,
                 )
             }
         }
     }
 
-    /**
-     * SecurityContext에서 userId(내부 PK, Long) 추출.
-     */
+    /** SecurityContext에서 userId(내부 PK, Long) 추출. */
     private fun extractUserId(): Long {
         val auth =
             SecurityContextHolder.getContext().authentication
@@ -144,13 +126,12 @@ class IdempotencyAspect(
      * JoinPoint 인자에서 IdempotencyTarget 구현체를 찾아 반환.
      * @Idempotent 메서드는 반드시 IdempotencyTarget 인자를 하나 포함해야 한다.
      */
-    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget =
-        jp.args
-            .filterIsInstance<IdempotencyTarget>()
-            .firstOrNull()
-            ?: throw IllegalArgumentException(
-                "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
-            )
+    private fun extractTarget(jp: ProceedingJoinPoint): IdempotencyTarget = jp.args
+        .filterIsInstance<IdempotencyTarget>()
+        .firstOrNull()
+        ?: throw IllegalArgumentException(
+            "@Idempotent 메서드[${jp.signature.name}]에 IdempotencyTarget 인자가 없습니다.",
+        )
 
     /** 구조화 로그용 간단한 JSON 직렬화 */
     private fun jsonLog(vararg pairs: Pair<String, Any?>): String =

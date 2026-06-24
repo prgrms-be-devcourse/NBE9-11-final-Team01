@@ -138,9 +138,8 @@ class MockSseConnectionManager(
     companion object {
         const val DEFAULT_TIMEOUT_MS: Long = 8 * 60 * 1000 // 8분 (작업 명세서 D2)
 
-        private fun defaultExecutor(): Executor =
-            Executors.newCachedThreadPool { runnable ->
-                Thread(runnable, "mock-sse-send").apply { isDaemon = true }
-            }
+        private fun defaultExecutor(): Executor = Executors.newCachedThreadPool { runnable ->
+            Thread(runnable, "mock-sse-send").apply { isDaemon = true }
+        }
     }
 }

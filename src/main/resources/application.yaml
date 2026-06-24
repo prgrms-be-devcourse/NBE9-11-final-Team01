@@ -3,7 +3,7 @@ spring:
     name: snaptix
 
   profiles:
-    active: dev
+    active: local  # 운영은 app.env로 SPRING_PROFILES_ACTIVE=dev주입
     include: secret
 
   datasource:
@@ -53,6 +53,13 @@ alert:
   throttle:
     window-seconds: 300
 
+# Rebuild & Reconcile (Epic 13)
+reconcile:
+  hold-window: 5m          # 유효 점유 홀드 윈도우 (cutoff = now - holdWindow)
+  scheduler-cron: "0 */10 * * * *"   # 만료 정산 10분 주기 (Story 13.3-2차)
+  drift-cron: "0 */30 * * * *"       # 상시 드리프트 정산 30분 주기 (Story 13.4)
+  rebuild-lock-ttl: 5m     # 다중 인스턴스 단일 재구축 락 TTL
+
 management:
   endpoints:
     web:
@@ -82,3 +89,15 @@ realtime:
   sse:
     timeout: 8m
     heartbeat-interval: 30s
+
+snaptix:
+  redis:
+    ttl:
+      ingest-envelope: 8m       # 멱등/소유권 봉투(권장 8분, 부하테스트로 조정)
+      order-hold: 5m            # ORDER_HOLD = 워커 재앵커링 기준
+      webhook-processed: 10m
+      payment-approve: 60s
+      event-info: 1h            # Story 1.1 / 11.2 / 13.2 일치
+      order-pending: 2m
+      rate-limit-second: 1s
+      rate-limit-minute: 60s
