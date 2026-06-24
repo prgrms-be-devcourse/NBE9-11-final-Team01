@@ -20,35 +20,21 @@ class TicketVerifyService(
 ) {
     @Transactional
     fun verify(request: TicketVerifyRequest): TicketVerifyResponse {
-        val event =
-            eventRepository.findByPublicId(request.eventId)
-                ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+        val event = getEvent(request.eventId)
 
-        val ticket =
-            ticketRepository.findByTicketCode(request.ticketCode)
-                ?: throw BusinessException(ErrorCode.TICKET_NOT_FOUND)
+        val ticket = getTicket(request.ticketCode)
 
-        val reservationEventId =
-            verifyQuery.findReservationEventId(ticket.reservationId)
-                ?: throw IllegalStateException(
-                    "Reservation not found: ${ticket.reservationId}",
-                )
-
-        if (reservationEventId != event.id) {
-            throw EventMismatchException()
-        }
+        validateEventMatch(
+            reservationId = ticket.reservationId,
+            eventId = event.id,
+        )
 
         val now = Instant.now()
 
-        val updated =
-            verifyQuery.markUsedIfIssued(
-                request.ticketCode,
-                now,
-            )
-
-        if (updated == 0) {
-            throw TicketAlreadyUsedException()
-        }
+        validateTicketUsage(
+            ticketCode = request.ticketCode,
+            now = now,
+        )
 
         return TicketVerifyResponse(
             ticketCode = request.ticketCode,
@@ -57,5 +43,39 @@ class TicketVerifyService(
             usedAt = now.toString(),
             message = "입장 처리되었습니다.",
         )
+    }
+
+    private fun getEvent(eventId: String) = eventRepository.findByPublicId(eventId)
+        ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+    private fun getTicket(ticketCode: String) = ticketRepository.findByTicketCode(ticketCode)
+        ?: throw BusinessException(ErrorCode.TICKET_NOT_FOUND)
+
+    private fun validateEventMatch(
+        reservationId: Long,
+        eventId: Long,
+    ) {
+        val reservationEventId =
+            verifyQuery.findReservationEventId(reservationId)
+                ?: error("Reservation not found: $reservationId")
+
+        if (reservationEventId != eventId) {
+            throw EventMismatchException()
+        }
+    }
+
+    private fun validateTicketUsage(
+        ticketCode: String,
+        now: Instant,
+    ) {
+        val updated =
+            verifyQuery.markUsedIfIssued(
+                ticketCode = ticketCode,
+                now = now,
+            )
+
+        if (updated == 0) {
+            throw TicketAlreadyUsedException()
+        }
     }
 }
