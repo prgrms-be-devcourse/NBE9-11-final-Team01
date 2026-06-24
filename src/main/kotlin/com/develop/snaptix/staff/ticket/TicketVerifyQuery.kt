@@ -26,11 +26,16 @@ class TicketVerifyQuery {
     ): Int = transaction {
         TicketsTable.update({
             (TicketsTable.ticketCode eq ticketCode) and
-                (TicketsTable.status eq "ISSUED")
+                (TicketsTable.status eq STATUS_ISSUED)
         }) {
-            it[status] = "USED"
+            it[status] = STATUS_USED
             it[usedAt] = now
             it[updatedAt] = now
         }
+    }
+
+    private companion object {
+        const val STATUS_ISSUED = "ISSUED"
+        const val STATUS_USED = "USED"
     }
 }
