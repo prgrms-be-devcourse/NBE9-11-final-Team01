@@ -1,37 +1,43 @@
+// 위치: src/test/kotlin/com/develop/snaptix/global/aop/aspect/RateLimitAspectTest.kt
 package com.develop.snaptix.global.aop.aspect
+
 import com.develop.snaptix.global.aop.annotation.RateLimit
 import com.develop.snaptix.global.exception.redis.RateLimitExceededException
+import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
+import com.develop.snaptix.global.redis.gateway.RateLimitResult
 import io.mockk.every
-import io.mockk.mockk
+import io.mockk.impl.annotations.MockK
+import io.mockk.junit5.MockKExtension
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory
-import org.springframework.dao.DataAccessResourceFailureException
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.data.redis.core.script.RedisScript
+import org.springframework.dao.QueryTimeoutException
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
+import java.time.Duration
 
+@ExtendWith(MockKExtension::class)
 class RateLimitAspectTest {
-    private val redisTemplate: StringRedisTemplate = mockk()
-    private lateinit var proxy: TestService
+    @MockK
+    private lateinit var gateway: RateLimitRedisGateway
+
+    private lateinit var aspect: RateLimitAspect
+    private lateinit var service: TestService
 
     @BeforeEach
     fun setUp() {
-        val factory = AspectJProxyFactory(TestService())
-        factory.addAspect(RateLimitAspect(redisTemplate))
-        proxy = factory.getProxy()
+        aspect = RateLimitAspect(gateway)
+        service = proxyOf<TestService>(TestServiceImpl())
 
-        RequestContextHolder.setRequestAttributes(
-            ServletRequestAttributes(
-                MockHttpServletRequest().apply { remoteAddr = "127.0.0.1" },
-            ),
-        )
+        val request = MockHttpServletRequest()
+        request.addHeader("X-Forwarded-For", CLIENT_IP)
+        RequestContextHolder.setRequestAttributes(ServletRequestAttributes(request))
     }
 
     @AfterEach
@@ -40,100 +46,56 @@ class RateLimitAspectTest {
     }
 
     @Test
-    fun `초당 제한 초과 시 RateLimitExceededException이 발생하고 retryAfterSeconds가 1이다`() {
-        stubRedis(secCount = 6L, minCount = 1L)
+    fun `허용되면 원본 메서드를 실행하고 게이트웨이에 한도를 위임한다`() {
+        every { gateway.hit(CLIENT_IP, PER_SECOND, PER_MINUTE) } returns
+            RateLimitResult(allowed = true, retryAfter = null)
 
-        val exception =
-            assertThrows<RateLimitExceededException> {
-                proxy.rateLimitedMethod()
-            }
+        val result = service.call()
 
-        assertThat(exception.retryAfterSeconds).isEqualTo(1L)
+        assertThat(result).isEqualTo("OK")
+        verify(exactly = 1) { gateway.hit(CLIENT_IP, PER_SECOND, PER_MINUTE) }
     }
 
     @Test
-    fun `분당 제한 초과 시 RateLimitExceededException이 발생하고 retryAfterSeconds가 60이다`() {
-        stubRedis(secCount = 1L, minCount = 21L)
-
-        val exception =
-            assertThrows<RateLimitExceededException> {
-                proxy.rateLimitedMethod()
-            }
-
-        assertThat(exception.retryAfterSeconds).isEqualTo(60L)
-    }
-
-    @Test
-    fun `초당 분당 제한 미초과 시 원본 메서드가 정상 실행된다`() {
-        stubRedis(secCount = 3L, minCount = 10L)
-
-        val result = proxy.rateLimitedMethod()
-
-        assertThat(result).isEqualTo("success")
-    }
-
-    @Test
-    fun `X-Forwarded-For 헤더가 있으면 첫 번째 IP를 기준으로 Rate Limit 키를 생성한다`() {
-        RequestContextHolder.setRequestAttributes(
-            ServletRequestAttributes(
-                MockHttpServletRequest().apply {
-                    addHeader("X-Forwarded-For", "203.0.113.42, 10.0.0.1")
-                    remoteAddr = "10.0.0.1"
-                },
-            ),
-        )
+    fun `차단되면 RateLimitExceededException을 던진다`() {
         every {
-            redisTemplate.execute(any<RedisScript<Long>>(), match { "203.0.113.42" in it.first() }, any<Any>())
-        } returns 1L
+            gateway.hit(any(), any(), any())
+        } returns RateLimitResult(allowed = false, retryAfter = Duration.ofSeconds(RETRY_AFTER_SECONDS))
 
-        proxy.rateLimitedMethod()
-
-        // sec, min 두 번 모두 실제 클라이언트 IP(203.0.113.42) 기준으로 호출되어야 함
-        verify(exactly = 2) {
-            redisTemplate.execute(any<RedisScript<Long>>(), match { "203.0.113.42" in it.first() }, any<Any>())
+        assertThrows<RateLimitExceededException> {
+            service.call()
         }
     }
 
     @Test
-    fun `Redis 예외 발생 시 Rate Limit 검사를 스킵하고 원본 메서드를 실행한다`() {
-        every {
-            redisTemplate.execute(any<RedisScript<Long>>(), any<List<String>>(), any<Any>())
-        } throws DataAccessResourceFailureException("Redis 연결 실패")
+    fun `Redis 장애(DataAccessException) 시 차단하지 않고 진행한다`() {
+        every { gateway.hit(any(), any(), any()) } throws QueryTimeoutException("Redis timeout")
 
-        // 예외 없이 정상 실행되어야 함
-        val result = proxy.rateLimitedMethod()
+        val result = service.call()
 
-        assertThat(result).isEqualTo("success")
+        assertThat(result).isEqualTo("OK")
     }
 
-    @Test
-    fun `@RateLimit이 없는 메서드는 Aspect가 개입하지 않는다`() {
-        val result = proxy.noAnnotationMethod()
-
-        assertThat(result).isEqualTo("no-aspect")
-        verify(exactly = 0) {
-            redisTemplate.execute(any<RedisScript<Long>>(), any<List<String>>(), any<Any>())
-        }
+    // reified로 인터페이스 타입을 명시 — JDK 프록시는 구현 클래스로 캐스트 불가
+    private inline fun <reified T : Any> proxyOf(target: Any): T {
+        val factory = AspectJProxyFactory(target)
+        factory.addAspect(aspect)
+        return T::class.java.cast(factory.getProxy())
     }
 
-    // ── 헬퍼 ──────────────────────────────────────────────────────────────
-
-    private fun stubRedis(
-        secCount: Long,
-        minCount: Long,
-    ) {
-        every {
-            redisTemplate.execute(any<RedisScript<Long>>(), match { "sec" in it.first() }, any<Any>())
-        } returns secCount
-        every {
-            redisTemplate.execute(any<RedisScript<Long>>(), match { "min" in it.first() }, any<Any>())
-        } returns minCount
+    interface TestService {
+        fun call(): String
     }
 
-    open class TestService {
-        @RateLimit
-        open fun rateLimitedMethod(): String = "success"
+    class TestServiceImpl : TestService {
+        @RateLimit(limitPerSecond = 5, limitPerMinute = 20)
+        override fun call(): String = "OK"
+    }
 
-        open fun noAnnotationMethod(): String = "no-aspect"
+    companion object {
+        private const val CLIENT_IP = "203.0.113.7"
+        private const val PER_SECOND = 5
+        private const val PER_MINUTE = 20
+        private const val RETRY_AFTER_SECONDS = 60L
     }
 }

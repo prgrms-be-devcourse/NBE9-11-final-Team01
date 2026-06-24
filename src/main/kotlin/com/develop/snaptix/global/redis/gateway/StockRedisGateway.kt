@@ -75,6 +75,20 @@ class StockRedisGateway(
         redis.opsForValue().get(keys.stock(zoneId))?.toIntOrNull()
     }
 
+    /** 현재 재고 일괄 조회. 키 부재 또는 숫자 파싱 실패 시 해당 zoneId 값은 null. */
+    fun getAll(zoneIds: List<Long>): Map<Long, Int?> = executor.execute(RedisAction.STOCK_GET) {
+        if (zoneIds.isEmpty()) {
+            return@execute emptyMap()
+        }
+
+        val stockKeys = zoneIds.map(keys::stock)
+        val values = redis.opsForValue().multiGet(stockKeys).orEmpty()
+
+        zoneIds
+            .zip(values)
+            .associate { (zoneId, value) -> zoneId to value?.toIntOrNull() }
+    }
+
     /**
      * 드리프트 누수 보정 — stock만 절대 SET. claimed는 절대 건드리지 않는다.
      * 방향(누수만/오버셀 알림만) 판단은 호출부(DriftReconciliationService) 책임.

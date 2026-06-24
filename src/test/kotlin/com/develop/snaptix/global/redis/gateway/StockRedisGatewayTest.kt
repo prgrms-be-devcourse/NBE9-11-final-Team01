@@ -124,6 +124,19 @@ class StockRedisGatewayTest {
     }
 
     @Test
+    fun `getAll은 여러 zone 재고를 한번에 조회하고 키 부재 시 null을 반환한다`() {
+        val anotherZoneId = 2L
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        redis.opsForValue().set(keys.stock(anotherZoneId), "0")
+
+        val stocks = gateway.getAll(listOf(ZONE_ID, anotherZoneId, 3L))
+
+        assertThat(stocks).containsEntry(ZONE_ID, SMALL_STOCK)
+        assertThat(stocks).containsEntry(anotherZoneId, 0)
+        assertThat(stocks).containsEntry(3L, null)
+    }
+
+    @Test
     fun `correctStock은 stock만 SET하고 claimed는 건드리지 않는다`() {
         redis.opsForValue().set(stockKey, "3")
         redis.opsForSet().add(claimedKey, "existing-order")

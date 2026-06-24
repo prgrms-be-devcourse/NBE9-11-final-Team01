@@ -7,15 +7,22 @@ import com.develop.snaptix.domain.event.dto.ZoneStockInfo
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.repository.EventDetailQueryResult
 import com.develop.snaptix.domain.event.repository.EventDetailZoneRecord
+import com.develop.snaptix.domain.event.repository.EventDetailZonesResult
 import com.develop.snaptix.domain.event.repository.EventListEventRecord
 import com.develop.snaptix.domain.event.repository.EventListSearchCondition
 import com.develop.snaptix.domain.event.repository.EventListSortBy
 import com.develop.snaptix.domain.event.repository.EventListSortDir
 import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.common.dto.PageResponse
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.exception.redis.RedisUnavailableException
+import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
+import com.develop.snaptix.global.redis.gateway.StockRedisGateway
+import com.develop.snaptix.global.redis.gateway.schema.EventInfo
+import com.develop.snaptix.global.resilience.ReconcileProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -23,13 +30,18 @@ import org.springframework.stereotype.Service
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.UUID
 
 private val KST_ZONE_ID: ZoneId = ZoneId.of("Asia/Seoul")
 
 @Service
 class EventQueryService(
     private val eventRepository: EventRepository,
+    private val reservationRepository: ReservationRepository,
     private val redisTemplate: StringRedisTemplate,
+    private val eventCacheRedisGateway: EventCacheRedisGateway,
+    private val stockRedisGateway: StockRedisGateway,
+    private val reconcileProperties: ReconcileProperties,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -61,9 +73,21 @@ class EventQueryService(
     }
 
     fun getEventDetail(eventId: String): EventDetailResponse {
+        val eventPublicId = parseEventPublicId(eventId)
+        val cachedMetadata = findCachedMetadata(eventPublicId)
+
+        if (cachedMetadata != null) {
+            val zones =
+                eventRepository.findPublicEventDetailZonesByPublicId(eventId)
+                    ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+
+            return cachedMetadata.toDetailResponse(zones)
+        }
+
         val detail =
             eventRepository.findEventDetailByPublicId(eventId)
                 ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)
+        cacheEventMetadata(eventPublicId, detail.event.toEventInfo())
 
         return detail.toDetailResponse()
     }
@@ -97,15 +121,123 @@ class EventQueryService(
         startTime = event.startTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
         endTime = event.endTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
         status = EventStatus.valueOf(event.status),
-        zones = zones.map { it.toStockInfo() },
+        zones = zones.toStockInfo(event.id),
     )
 
-    private fun EventDetailZoneRecord.toStockInfo(): ZoneStockInfo = ZoneStockInfo(
-        zoneId = publicId,
+    private fun EventMetadata.toDetailResponse(zones: EventDetailZonesResult): EventDetailResponse =
+        EventDetailResponse(
+            eventId = eventId,
+            name = name,
+            description = description,
+            location = location,
+            posterUrl = posterUrl,
+            startTime = startTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
+            endTime = endTime.atZone(KST_ZONE_ID).toOffsetDateTime(),
+            status = status,
+            zones = zones.zones.toStockInfo(zones.eventId),
+        )
+
+    private fun List<EventDetailZoneRecord>.toStockInfo(eventId: Long): List<ZoneStockInfo> {
+        val zoneIds = map { it.id }
+        val stockByZoneId = readCurrentStocks(zoneIds)
+        val fallbackOccupiedByZone =
+            if (stockByZoneId.hasMissingStock(zoneIds)) {
+                reservationRepository.countOccupiedByZone(
+                    eventId = eventId,
+                    holdCutoff = Instant.now().minus(reconcileProperties.holdWindow),
+                )
+            } else {
+                emptyMap()
+            }
+
+        return map { zone ->
+            zone.toStockInfo(
+                currentStock = stockByZoneId[zone.id],
+                fallbackOccupiedByZone = fallbackOccupiedByZone,
+            )
+        }
+    }
+
+    private fun EventDetailZoneRecord.toStockInfo(
+        currentStock: Int?,
+        fallbackOccupiedByZone: Map<Long, Int>,
+    ): ZoneStockInfo {
+        val fallbackStock = (totalCapacity - fallbackOccupiedByZone.getOrDefault(id, 0)).coerceAtLeast(0)
+
+        return ZoneStockInfo(
+            zoneId = publicId,
+            name = name,
+            unitPrice = unitPrice,
+            totalCapacity = totalCapacity,
+            currentStock = currentStock ?: fallbackStock,
+        )
+    }
+
+    private fun Map<Long, Int?>.hasMissingStock(zoneIds: List<Long>): Boolean = zoneIds.any { this[it] == null }
+
+    private fun readCurrentStocks(zoneIds: List<Long>): Map<Long, Int?> = try {
+        stockRedisGateway.getAll(zoneIds)
+    } catch (exception: RedisUnavailableException) {
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+        emptyMap()
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_DETAIL_STOCK_READ_FAILED] zoneIds=$zoneIds" }
+        emptyMap()
+    }
+
+    private fun parseEventPublicId(eventId: String): UUID = runCatching { UUID.fromString(eventId) }
+        .getOrElse { throw BusinessException(ErrorCode.EVENT_NOT_FOUND) }
+
+    private fun findCachedMetadata(eventPublicId: UUID): EventMetadata? = try {
+        eventCacheRedisGateway.get(eventPublicId)?.toMetadataOrNull()
+    } catch (exception: RedisUnavailableException) {
+        logger.warn(exception) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
+        null
+    } catch (exception: DataAccessException) {
+        logger.warn(exception) { "[EVENT_DETAIL_CACHE_READ_FAILED] eventPublicId=$eventPublicId" }
+        null
+    }
+
+    private fun cacheEventMetadata(
+        eventPublicId: UUID,
+        eventInfo: EventInfo,
+    ) {
+        try {
+            eventCacheRedisGateway.put(eventPublicId, eventInfo)
+        } catch (exception: RedisUnavailableException) {
+            logger.warn(exception) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
+        } catch (exception: DataAccessException) {
+            logger.warn(exception) { "[EVENT_DETAIL_CACHE_WRITE_FAILED] eventPublicId=$eventPublicId" }
+        }
+    }
+
+    private fun EventInfo.toMetadataOrNull(): EventMetadata? = runCatching {
+        val status = EventStatus.valueOf(status)
+        if (status !in PUBLIC_DETAIL_STATUSES) {
+            return null
+        }
+
+        EventMetadata(
+            eventId = eventId,
+            name = name,
+            description = description.takeIf { it.isNotBlank() },
+            location = location,
+            startTime = Instant.parse(startTime),
+            endTime = Instant.parse(endTime),
+            posterUrl = posterUrl.takeIf { it.isNotBlank() },
+            status = status,
+        )
+    }.getOrNull()
+
+    private fun com.develop.snaptix.domain.event.repository.EventDetail.toEventInfo(): EventInfo = EventInfo(
+        eventId = publicId,
         name = name,
-        unitPrice = unitPrice,
-        totalCapacity = totalCapacity,
-        currentStock = totalCapacity,
+        description = description.orEmpty(),
+        location = location,
+        startTime = startTime.toString(),
+        endTime = endTime.toString(),
+        status = status,
+        posterUrl = posterUrl.orEmpty(),
     )
 
     private fun EventListZoneRecord.isSoldOut(): Boolean = try {
@@ -135,4 +267,19 @@ class EventQueryService(
     private fun LocalDate.toKstStartInstant(): Instant = atStartOfDay(KST_ZONE_ID).toInstant()
 
     private fun stockKey(zoneId: Long): String = "ZONE:$zoneId:stock"
+
+    private data class EventMetadata(
+        val eventId: String,
+        val name: String,
+        val description: String?,
+        val location: String,
+        val startTime: Instant,
+        val endTime: Instant,
+        val posterUrl: String?,
+        val status: EventStatus,
+    )
+
+    private companion object {
+        val PUBLIC_DETAIL_STATUSES = setOf(EventStatus.ON_SALE, EventStatus.SOLD_OUT)
+    }
 }

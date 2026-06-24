@@ -90,7 +90,13 @@ data class EventDetailQueryResult(
     val zones: List<EventDetailZoneRecord>,
 )
 
+data class EventDetailZonesResult(
+    val eventId: Long,
+    val zones: List<EventDetailZoneRecord>,
+)
+
 data class EventDetailZoneRecord(
+    val id: Long,
     val publicId: String,
     val name: String,
     val unitPrice: Int,
@@ -139,6 +145,24 @@ class EventRepository {
                     zones = findDetailZoneRecordsByEventId(event.id),
                 )
             }
+    }
+
+    fun findPublicEventDetailZonesByPublicId(publicId: String): EventDetailZonesResult? = transaction {
+        val publicStatuses = PUBLIC_DETAIL_STATUSES.map { it.name }
+        val eventId =
+            EventsTable
+                .selectAll()
+                .where {
+                    (EventsTable.publicId eq publicId) and
+                        (EventsTable.status inList publicStatuses)
+                }.singleOrNull()
+                ?.get(EventsTable.id)
+                ?: return@transaction null
+
+        EventDetailZonesResult(
+            eventId = eventId,
+            zones = findDetailZoneRecordsByEventId(eventId),
+        )
     }
 
     fun insert(
@@ -252,6 +276,7 @@ class EventRepository {
         .where { ZonesTable.eventId eq eventId }
         .map {
             EventDetailZoneRecord(
+                id = it[ZonesTable.id],
                 publicId = it[ZonesTable.publicId],
                 name = it[ZonesTable.name],
                 unitPrice = it[ZonesTable.unitPrice],
