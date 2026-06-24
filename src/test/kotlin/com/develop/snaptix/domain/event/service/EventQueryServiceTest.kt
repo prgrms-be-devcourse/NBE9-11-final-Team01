@@ -13,6 +13,8 @@ import com.develop.snaptix.domain.event.repository.EventListSortDir
 import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.event.repository.EventRepository
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
+import com.develop.snaptix.domain.zone.dto.ZoneWithEventId
+import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
@@ -34,6 +36,7 @@ import java.util.UUID
 
 class EventQueryServiceTest {
     private val eventRepository = mockk<EventRepository>()
+    private val zoneRepository = mockk<ZoneRepository>()
     private val reservationRepository = mockk<ReservationRepository>()
     private val valueOperations = mockk<ValueOperations<String, String>>()
     private val redisTemplate = mockk<StringRedisTemplate>()
@@ -43,10 +46,11 @@ class EventQueryServiceTest {
         EventQueryService(
             eventRepository = eventRepository,
             reservationRepository = reservationRepository,
-            redisTemplate = redisTemplate,
             eventCacheRedisGateway = eventCacheRedisGateway,
             stockRedisGateway = stockRedisGateway,
             reconcileProperties = ReconcileProperties(),
+            zoneRepository =
+            zoneRepository,
         )
 
     @Test
@@ -117,8 +121,8 @@ class EventQueryServiceTest {
                 totalElements = 1L,
             )
         every { redisTemplate.opsForValue() } returns valueOperations
-        every { valueOperations.get("ZONE:10:stock") } returns "0"
-        every { valueOperations.get("ZONE:11:stock") } returns "0"
+        every { stockRedisGateway.get(10L) } returns 0
+        every { stockRedisGateway.get(11L) } returns 0
 
         val response = eventQueryService.getEvents(EventListRequest())
 
@@ -140,8 +144,8 @@ class EventQueryServiceTest {
                 totalElements = 1L,
             )
         every { redisTemplate.opsForValue() } returns valueOperations
-        every { valueOperations.get("ZONE:10:stock") } returns "0"
-        every { valueOperations.get("ZONE:11:stock") } returns "1"
+        every { stockRedisGateway.get(10L) } returns 5
+        every { stockRedisGateway.get(11L) } returns 0
 
         val response = eventQueryService.getEvents(EventListRequest())
 
@@ -164,15 +168,45 @@ class EventQueryServiceTest {
     }
 
     @Test
-    fun `Redis 재고 조회 실패 시 목록 조회 가용성을 우선하여 매진 아님으로 처리한다`() {
+    fun `Redis 재고 조회 실패 시 DB 폴백으로 매진 여부를 판단한다`() {
         every { eventRepository.findPublicEventPage(any()) } returns
             EventListPageRecord(
                 events = listOf(eventRecord(id = 1L)),
                 zones = listOf(zoneRecord(eventId = 1L, zoneId = 10L, unitPrice = 150_000)),
                 totalElements = 1L,
             )
-        every { redisTemplate.opsForValue() } returns valueOperations
-        every { valueOperations.get("ZONE:10:stock") } throws RedisConnectionFailureException("redis down")
+        every { stockRedisGateway.get(10L) } throws RedisConnectionFailureException("redis down")
+        every { zoneRepository.findWithEventIdById(10L) } returns
+            ZoneWithEventId(id = 10L, eventId = 1L, totalCapacity = 100)
+        every {
+            reservationRepository.countOccupiedByZone(
+                eventId = 1L,
+                holdCutoff = any(),
+            )
+        } returns mapOf(10L to 100) // 전석 점유 → 매진
+
+        val response = eventQueryService.getEvents(EventListRequest())
+
+        assertThat(response.content[0].isSoldOut).isTrue()
+    }
+
+    @Test
+    fun `Redis 재고 조회 실패 시 DB 폴백으로 잔여석이 있으면 매진이 아니다`() {
+        every { eventRepository.findPublicEventPage(any()) } returns
+            EventListPageRecord(
+                events = listOf(eventRecord(id = 1L)),
+                zones = listOf(zoneRecord(eventId = 1L, zoneId = 10L, unitPrice = 150_000)),
+                totalElements = 1L,
+            )
+        every { stockRedisGateway.get(10L) } throws RedisConnectionFailureException("redis down")
+        every { zoneRepository.findWithEventIdById(10L) } returns
+            ZoneWithEventId(id = 10L, eventId = 1L, totalCapacity = 100)
+        every {
+            reservationRepository.countOccupiedByZone(
+                eventId = 1L,
+                holdCutoff = any(),
+            )
+        } returns mapOf(10L to 50) // 50석 잔여 → 매진 아님
 
         val response = eventQueryService.getEvents(EventListRequest())
 

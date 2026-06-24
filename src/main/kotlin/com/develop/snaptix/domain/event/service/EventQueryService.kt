@@ -15,6 +15,7 @@ import com.develop.snaptix.domain.event.repository.EventListSortDir
 import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.event.repository.EventRepository
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
+import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.common.dto.PageResponse
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
@@ -25,7 +26,6 @@ import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import com.develop.snaptix.global.resilience.ReconcileProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.dao.DataAccessException
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.time.LocalDate
@@ -38,10 +38,10 @@ private val KST_ZONE_ID: ZoneId = ZoneId.of("Asia/Seoul")
 class EventQueryService(
     private val eventRepository: EventRepository,
     private val reservationRepository: ReservationRepository,
-    private val redisTemplate: StringRedisTemplate,
     private val eventCacheRedisGateway: EventCacheRedisGateway,
     private val stockRedisGateway: StockRedisGateway,
     private val reconcileProperties: ReconcileProperties,
+    private val zoneRepository: ZoneRepository,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -240,11 +240,21 @@ class EventQueryService(
         posterUrl = posterUrl.orEmpty(),
     )
 
+    /**
+     * 단건 재고 소진 여부 확인 (게이트웨이 위임 및 서킷 브레이커 연동)
+     */
     private fun EventListZoneRecord.isSoldOut(): Boolean = try {
-        redisTemplate.opsForValue().get(stockKey(zoneId))?.toIntOrNull() == 0
-    } catch (exception: DataAccessException) {
-        logger.warn(exception) { "[EVENT_LIST_STOCK_READ_FAILED] zoneId=$zoneId" }
-        false
+        // 게이트웨이를 통해 재고를 조회 (관측성, 서킷브레이커 자동 적용)
+        val stock = stockRedisGateway.get(zoneId)
+        stock == 0
+    } catch (e: DataAccessException) {
+        // Detekt 룰에 맞춰 개별 예외로 분리하여 catch
+        logger.warn(e) { "[EVENT_LIST_STOCK_READ_FAILED] DB Fallback for zoneId=$zoneId" }
+        checkDbStockIsZero(zoneId)
+    } catch (e: RedisUnavailableException) {
+        // 서킷 브레이커 오픈 시 발생하는 예외도 개별 처리
+        logger.warn(e) { "[EVENT_LIST_STOCK_READ_FAILED] DB Fallback for zoneId=$zoneId" }
+        checkDbStockIsZero(zoneId)
     }
 
     private fun String.toEventListSortBy(): EventListSortBy = when (this) {
@@ -266,7 +276,20 @@ class EventQueryService(
 
     private fun LocalDate.toKstStartInstant(): Instant = atStartOfDay(KST_ZONE_ID).toInstant()
 
-    private fun stockKey(zoneId: Long): String = "ZONE:$zoneId:stock"
+    /**
+     * DB 폴백 로직: Redis 장애 시 DB에서 직접 재고를 계산하여 우아한 강등(Graceful Degradation) 처리
+     */
+    private fun checkDbStockIsZero(zoneId: Long): Boolean {
+        val zone = zoneRepository.findWithEventIdById(zoneId) ?: return true
+
+        val holdCutoff = Instant.now().minus(reconcileProperties.holdWindow)
+        val occupied =
+            reservationRepository
+                .countOccupiedByZone(eventId = zone.eventId, holdCutoff = holdCutoff)
+                .getOrDefault(zoneId, 0)
+
+        return (zone.totalCapacity - occupied).coerceAtLeast(0) == 0
+    }
 
     private data class EventMetadata(
         val eventId: String,
