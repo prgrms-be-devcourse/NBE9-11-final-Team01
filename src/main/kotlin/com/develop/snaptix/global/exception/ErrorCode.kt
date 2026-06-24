@@ -207,6 +207,13 @@ enum class ErrorCode(
         "TICKET-004",
         "이미 사용된 티켓입니다.",
     ),
+	
+    // ==================== 예약 (RESERVATION) ====================
+    RESERVATION_NOT_FOUND(
+        HttpStatus.NOT_FOUND,
+        "RESERVATION-001",
+        "존재하지 않는 예약입니다.",
+    ),
 
     // ==================== 메트릭 (METRIC) ====================
     METRIC_NOT_FOUND(
