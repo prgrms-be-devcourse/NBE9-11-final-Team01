@@ -241,6 +241,28 @@ class MockPaymentWebhookIntegrationTest(
         assertThat(findReservationStatus(seed.orderId)).isEqualTo(ReservationStatus.PENDING_PAYMENT.name)
     }
 
+    @Test
+    fun `Webhook 요청 본문 검증에 실패하면 필드 에러를 반환한다`() {
+        val body =
+            webhookBody(
+                orderId = "invalid-order-id",
+                paymentStatus = MockPaymentStatus.FAIL,
+                failReason = "x".repeat(101),
+            )
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+                content = body
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+                jsonPath("$.errors[?(@.field == 'orderId')]") { exists() }
+                jsonPath("$.errors[?(@.field == 'failReason')]") { exists() }
+            }
+    }
+
     private fun insertPaymentReservation(status: ReservationStatus): SeededPayment {
         val userId = ReconcileFixtures.insertUser()
         val event = ReconcileFixtures.insertEvent(EventStatus.ON_SALE)
