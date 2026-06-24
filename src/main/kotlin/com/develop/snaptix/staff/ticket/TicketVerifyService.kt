@@ -18,12 +18,8 @@ class TicketVerifyService(
     private val ticketRepository: TicketRepository,
     private val verifyQuery: TicketVerifyQuery,
 ) {
-
     @Transactional
-    fun verify(
-        request: TicketVerifyRequest,
-    ): TicketVerifyResponse {
-
+    fun verify(request: TicketVerifyRequest): TicketVerifyResponse {
         val event =
             eventRepository.findByPublicId(request.eventId)
                 ?: throw BusinessException(ErrorCode.EVENT_NOT_FOUND)

@@ -12,10 +12,7 @@ import java.time.Instant
 
 @Component
 class TicketVerifyQuery {
-
-    fun findReservationEventId(
-        reservationId: Long,
-    ): Long? = transaction {
+    fun findReservationEventId(reservationId: Long): Long? = transaction {
         ReservationsTable
             .selectAll()
             .where { ReservationsTable.id eq reservationId }
