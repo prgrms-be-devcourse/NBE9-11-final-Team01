@@ -40,7 +40,7 @@ class BackpressureGuard(
             meterRegistry.counter("ticketing.order.backpressure.count").increment()
 
             // 429 Too Many Requests 응답 유도
-            throw BusinessException(ErrorCode.RATE_LIMIT_EXCEEDED)
+            throw BusinessException(ErrorCode.QUEUE_CAPACITY_EXCEEDED)
         }
     }
 }

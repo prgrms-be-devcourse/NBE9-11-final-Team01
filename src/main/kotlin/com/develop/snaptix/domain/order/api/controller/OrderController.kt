@@ -7,8 +7,8 @@ import com.develop.snaptix.domain.order.api.port.OrderIngestPort
 import com.develop.snaptix.domain.order.api.port.OrderQueryPort
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
-import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.GetMapping
@@ -24,22 +24,29 @@ class OrderController(
     private val orderIngestPort: OrderIngestPort,
     private val orderQueryPort: OrderQueryPort,
 ) {
-    @PreAuthorize("hasRole('USER')")
     @PostMapping
     fun createOrder(
-        @AuthenticationPrincipal userId: Long?,
+        @AuthenticationPrincipal(expression = "#this") userId: Long?,
         @Validated @RequestBody request: OrderRequest,
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<OrderAcceptedResponse> {
         val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
 
-        val response = orderIngestPort.ingest(validUserId, request)
+        val ip =
+            httpRequest
+                .getHeader("X-Forwarded-For")
+                ?.split(",")
+                ?.first()
+                ?.trim()
+                ?: httpRequest.remoteAddr
+
+        val response = orderIngestPort.ingest(validUserId, request, ip)
         return ResponseEntity.accepted().body(response)
     }
 
-    @PreAuthorize("hasRole('USER')")
     @GetMapping("/{orderId}")
     fun getOrderStatus(
-        @AuthenticationPrincipal userId: Long?,
+        @AuthenticationPrincipal(expression = "#this") userId: Long?,
         @PathVariable orderId: String,
     ): ResponseEntity<OrderStatusResponse> {
         val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
