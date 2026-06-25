@@ -48,7 +48,7 @@ class EventRedisInitializer(
         request: EventBulkCreateRequest,
         zones: List<ZoneInsertResult>,
     ): List<String> {
-        val cacheJson = objectMapper.writeValueAsString(event.toEventInfo(request))
+        val cacheJson = objectMapper.writeValueAsString(event.toEventInfo(request, zones))
 
         return buildList {
             add(EVENT_INFO_CACHE_TTL.seconds.toString())
@@ -59,7 +59,10 @@ class EventRedisInitializer(
         }
     }
 
-    private fun EventInsertResult.toEventInfo(request: EventBulkCreateRequest): EventInfo = EventInfo(
+    private fun EventInsertResult.toEventInfo(
+        request: EventBulkCreateRequest,
+        zones: List<ZoneInsertResult>,
+    ): EventInfo = EventInfo(
         eventId = publicId,
         name = request.name,
         description = request.description.orEmpty(),
@@ -68,5 +71,6 @@ class EventRedisInitializer(
         endTime = request.endTime.toInstant().toString(),
         status = request.initialStatus.name,
         posterUrl = request.posterUrl.orEmpty(),
+        totalCapacity = zones.sumOf { it.totalCapacity },
     )
 }

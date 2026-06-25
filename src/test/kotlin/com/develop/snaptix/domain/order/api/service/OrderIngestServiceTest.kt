@@ -9,7 +9,6 @@ import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitResult
-import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import io.mockk.every
 import io.mockk.just
@@ -32,7 +31,6 @@ class OrderIngestServiceTest {
     // ── 의존성 mock ─────────────────────────────────────────────────────────────
     private val orderRateLimiter = mockk<RateLimitRedisGateway>()
     private val eventCacheGateway = mockk<EventCacheRedisGateway>()
-    private val stockRedisGateway = mockk<StockRedisGateway>()
     private val backpressureGuard = mockk<BackpressureGuard>()
     private val idempotencyGateway = mockk<IdempotencyRedisGateway>()
     private val orderStreamGateway = mockk<OrderStreamGateway>()
@@ -45,9 +43,10 @@ class OrderIngestServiceTest {
     private val ip = "192.168.0.1"
     private val eventPublicId: UUID = UUID.randomUUID()
     private val zoneId = 10L
+    private val totalCapacity = 100
     private val request = OrderRequest(eventId = eventPublicId.toString(), zoneId = zoneId)
 
-    // EventInfo.status 만 사용하므로 relaxed mock으로 생성 후 status만 명시 스텁
+    // relaxed mock 으로 생성 후 테스트에 필요한 필드만 명시 스텁
     private val onSaleEventInfo = mockk<EventInfo>(relaxed = true)
 
     @BeforeEach
@@ -56,7 +55,6 @@ class OrderIngestServiceTest {
             OrderIngestService(
                 orderRateLimiter = orderRateLimiter,
                 eventCacheGateway = eventCacheGateway,
-                stockRedisGateway = stockRedisGateway,
                 backpressureGuard = backpressureGuard,
                 idempotencyGateway = idempotencyGateway,
                 orderStreamGateway = orderStreamGateway,
@@ -65,9 +63,9 @@ class OrderIngestServiceTest {
 
         // 정상 흐름 기본 스텁 — 각 @Nested 에서 필요한 단계만 오버라이드
         every { onSaleEventInfo.status } returns "ON_SALE"
+        every { onSaleEventInfo.totalCapacity } returns totalCapacity
         every { orderRateLimiter.hit(any(), any(), any()) } returns RateLimitResult(allowed = true, retryAfter = null)
         every { eventCacheGateway.get(any()) } returns onSaleEventInfo
-        every { stockRedisGateway.get(zoneId) } returns 100
         every { backpressureGuard.check(any(), any()) } just runs
         every { idempotencyGateway.tryAcquire(any(), any(), any()) } returns true
         every { ownershipRedisGateway.set(any(), any()) } just runs
@@ -197,9 +195,13 @@ class OrderIngestServiceTest {
         }
 
         @Test
-        @DisplayName("재고 캐시 미스 시 RECONCILE_FAILED 를 던진다")
-        fun `throws RECONCILE_FAILED when stock cache is missing`() {
-            every { stockRedisGateway.get(zoneId) } returns null
+        @DisplayName("이벤트 캐시에 totalCapacity 가 없으면 RECONCILE_FAILED 를 던진다")
+        fun `throws RECONCILE_FAILED when totalCapacity is missing from event cache`() {
+            // 구 버전 캐시 항목 또는 초기화 누락 케이스 (totalCapacity = null)
+            val legacyEventInfo = mockk<EventInfo>(relaxed = true)
+            every { legacyEventInfo.status } returns "ON_SALE"
+            every { legacyEventInfo.totalCapacity } returns null
+            every { eventCacheGateway.get(any()) } returns legacyEventInfo
 
             assertThatThrownBy { sut.ingest(userId, request, ip) }
                 .isInstanceOf(BusinessException::class.java)
@@ -237,6 +239,17 @@ class OrderIngestServiceTest {
                 .isInstanceOf(BusinessException::class.java)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.QUEUE_CAPACITY_EXCEEDED)
+        }
+
+        @Test
+        @DisplayName("backpressureGuard 에 eventInfo.totalCapacity 값이 전달된다")
+        fun `passes totalCapacity from eventInfo to backpressureGuard`() {
+            val capacitySlot = slot<Int>()
+            every { backpressureGuard.check(any(), capture(capacitySlot)) } just runs
+
+            sut.ingest(userId, request, ip)
+
+            assertThat(capacitySlot.captured).isEqualTo(totalCapacity)
         }
 
         @Test
