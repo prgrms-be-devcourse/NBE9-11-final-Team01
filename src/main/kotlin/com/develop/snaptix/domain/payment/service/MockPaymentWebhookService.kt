@@ -49,13 +49,17 @@ class MockPaymentWebhookService(
                 MockPaymentStatus.FAIL -> paymentReservationRepository.cancelIfPending(request.orderId)
             } ?: throw BusinessException(ErrorCode.ORDER_NOT_FOUND)
 
-        if (shouldRunSideEffects(request.paymentStatus, result)) {
+        val shouldRunSideEffects = shouldRunSideEffects(request.paymentStatus, result)
+
+        if (shouldRunSideEffects) {
             releaseHold(orderId)
             releaseClaimIfPaymentSucceeded(orderId, request.paymentStatus, result)
             compensateStockIfPaymentFailed(orderId, request.paymentStatus, result)
         }
 
-        webhookGuardRedisGateway.markProcessed(orderId)
+        if (result.processed || shouldRunSideEffects) {
+            webhookGuardRedisGateway.markProcessed(orderId)
+        }
 
         return if (result.processed) {
             processed(request.orderId)
