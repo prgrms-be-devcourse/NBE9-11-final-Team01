@@ -89,6 +89,21 @@ class StockRedisGatewayTest {
     }
 
     @Test
+    fun `releaseClaim은 stock을 유지하고 claimed에서 orderId만 제거한다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val orderId = UUID.randomUUID()
+        redis.opsForSet().add(claimedKey, orderId.toString())
+
+        val first = gateway.releaseClaim(ZONE_ID, orderId)
+        val second = gateway.releaseClaim(ZONE_ID, orderId)
+
+        assertThat(first).isTrue()
+        assertThat(second).isFalse()
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo(SMALL_STOCK.toString())
+        assertThat(redis.opsForSet().isMember(claimedKey, orderId.toString())).isFalse()
+    }
+
+    @Test
     fun `초기 100 동시 1000 차감 시 정확히 100건만 성공하고 최종 재고는 0`() {
         redis.opsForValue().set(stockKey, INITIAL_STOCK.toString())
         val pool = Executors.newFixedThreadPool(THREAD_POOL_SIZE)

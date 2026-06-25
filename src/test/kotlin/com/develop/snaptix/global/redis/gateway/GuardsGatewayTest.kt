@@ -67,6 +67,17 @@ class GuardsGatewayTest {
     }
 
     @Test
+    fun `webhook 가드는 처리 완료 여부를 조회한다`() {
+        val orderId = UUID.randomUUID()
+
+        assertThat(webhookGuard.isProcessed(orderId)).isFalse()
+
+        webhookGuard.markProcessed(orderId)
+
+        assertThat(webhookGuard.isProcessed(orderId)).isTrue()
+    }
+
+    @Test
     fun `결제 승인 가드는 첫 시도만 true, 이중 클릭은 false`() {
         val orderId = UUID.randomUUID()
 

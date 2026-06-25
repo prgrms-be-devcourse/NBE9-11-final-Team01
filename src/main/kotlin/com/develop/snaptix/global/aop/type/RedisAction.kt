@@ -41,6 +41,9 @@ enum class RedisAction {
     /** 재고 보상 +1 (SOLD_OUT·중복·DB롤백 터미널 경로 공통) */
     COMPENSATE_STOCK,
 
+    /** 결제 성공 확정 후 claimed에서 orderId만 제거(stock 미변경) */
+    CLAIM_RELEASE,
+
     /** 드리프트 누수 보정 SET (stock만, claimed 미접촉) */
     STOCK_DRIFT_FIX,
 
