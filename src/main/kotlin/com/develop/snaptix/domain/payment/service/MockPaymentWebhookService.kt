@@ -9,7 +9,6 @@ import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.ErrorResponse
-import com.develop.snaptix.global.exception.FieldValidationException
 import com.develop.snaptix.global.redis.gateway.OrderHoldRedisGateway
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.redis.gateway.WebhookGuardRedisGateway
@@ -95,7 +94,10 @@ class MockPaymentWebhookService(
                 }.sortedBy { it.field }
 
         if (fieldErrors.isNotEmpty()) {
-            throw FieldValidationException(fieldErrors)
+            throw BusinessException(
+                errorCode = ErrorCode.VALIDATION_FAILED,
+                fieldErrors = fieldErrors,
+            )
         }
     }
 

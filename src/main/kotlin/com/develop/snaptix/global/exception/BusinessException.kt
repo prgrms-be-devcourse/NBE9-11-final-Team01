@@ -13,6 +13,7 @@ open class BusinessException(
     internal val errorCode: ErrorCode,
     customMessage: String? = null,
     cause: Throwable? = null,
+    private val fieldErrors: List<ErrorResponse.FieldError>? = null,
 ) : RuntimeException(customMessage, cause) {
     constructor(errorCode: ErrorCode) : this(errorCode, null)
 
@@ -22,5 +23,7 @@ open class BusinessException(
     override val message: String
         get() = super.message ?: errorCode.message
 
-    fun toErrorResponse(): ErrorResponse = errorCode.toErrorResponse(message)
+    fun toErrorResponse(): ErrorResponse = fieldErrors
+        ?.let { errorCode.toErrorResponse(it) }
+        ?: errorCode.toErrorResponse(message)
 }
