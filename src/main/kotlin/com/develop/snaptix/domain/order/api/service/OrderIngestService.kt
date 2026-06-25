@@ -36,7 +36,13 @@ class OrderIngestService(
         request: OrderRequest,
         ip: String,
     ): OrderAcceptedResponse {
-        val eventId = UUID.fromString(request.eventId)
+        val eventId =
+            try {
+                requireNotNull(request.eventId) { "eventId는 필수입니다." }
+                UUID.fromString(request.eventId)
+            } catch (_: IllegalArgumentException) {
+                throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "유효하지 않은 eventId 형식입니다.")
+            }
         val zoneId = request.zoneId
         val orderId = UUID.randomUUID()
 
