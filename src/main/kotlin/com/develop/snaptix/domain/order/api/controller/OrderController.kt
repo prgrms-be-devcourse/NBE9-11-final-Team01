@@ -1,9 +1,13 @@
 package com.develop.snaptix.domain.order.api.controller
+
 import com.develop.snaptix.domain.order.api.dto.OrderAcceptedResponse
 import com.develop.snaptix.domain.order.api.dto.OrderRequest
 import com.develop.snaptix.domain.order.api.dto.OrderStatusResponse
 import com.develop.snaptix.domain.order.api.port.OrderIngestPort
 import com.develop.snaptix.domain.order.api.port.OrderQueryPort
+import com.develop.snaptix.global.exception.BusinessException
+import com.develop.snaptix.global.exception.ErrorCode
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.validation.annotation.Validated
@@ -22,19 +26,32 @@ class OrderController(
 ) {
     @PostMapping
     fun createOrder(
-        @AuthenticationPrincipal userId: Long,
+        @AuthenticationPrincipal(expression = "#this") userId: Long?,
         @Validated @RequestBody request: OrderRequest,
+        httpRequest: HttpServletRequest,
     ): ResponseEntity<OrderAcceptedResponse> {
-        val response = orderIngestPort.ingest(userId, request)
+        val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
+
+        val ip =
+            httpRequest
+                .getHeader("X-Forwarded-For")
+                ?.split(",")
+                ?.first()
+                ?.trim()
+                ?: httpRequest.remoteAddr
+
+        val response = orderIngestPort.ingest(validUserId, request, ip)
         return ResponseEntity.accepted().body(response)
     }
 
     @GetMapping("/{orderId}")
     fun getOrderStatus(
-        @AuthenticationPrincipal userId: Long,
+        @AuthenticationPrincipal(expression = "#this") userId: Long?,
         @PathVariable orderId: String,
     ): ResponseEntity<OrderStatusResponse> {
-        val response = orderQueryPort.getStatus(userId, orderId)
+        val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
+
+        val response = orderQueryPort.getStatus(validUserId, orderId)
         return ResponseEntity.ok(response)
     }
 }

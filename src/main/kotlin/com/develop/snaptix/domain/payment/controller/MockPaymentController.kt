@@ -2,7 +2,10 @@ package com.develop.snaptix.domain.payment.controller
 
 import com.develop.snaptix.domain.payment.dto.MockPaymentApproveRequest
 import com.develop.snaptix.domain.payment.dto.MockPaymentApproveResponse
+import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookResponse
 import com.develop.snaptix.domain.payment.service.MockPaymentApproveService
+import com.develop.snaptix.domain.payment.service.MockPaymentWebhookService
+import com.develop.snaptix.domain.payment.service.MockPaymentWebhookSignatureVerifier
 import com.develop.snaptix.global.exception.ErrorResponse
 import com.develop.snaptix.global.security.auth.CurrentUserProvider
 import io.swagger.v3.oas.annotations.Operation
@@ -17,6 +20,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/payments/mock")
 class MockPaymentController(
     private val mockPaymentApproveService: MockPaymentApproveService,
+    private val mockPaymentWebhookService: MockPaymentWebhookService,
     private val currentUserProvider: CurrentUserProvider,
 ) {
     @Operation(
@@ -80,6 +85,54 @@ class MockPaymentController(
                 userId = currentUserProvider.getCurrentUserId(),
                 request = request,
             )
+        return ResponseEntity.ok(response)
+    }
+
+    @Operation(
+        summary = "Mock PG 결제 결과 Webhook 수신",
+        description =
+            "Mock PG가 결제 승인 처리 후 성공 또는 실패 결과를 전달합니다. " +
+                "서버는 Webhook 서명과 요청 본문을 검증한 뒤 예약 상태를 조건부 변경합니다. " +
+                "SUCCESS는 PENDING_PAYMENT 예약을 CONFIRMED로, FAIL은 CANCELLED로 변경합니다. " +
+                "티켓 발급 및 Redis/SSE 후처리는 Ticket Service/Worker 흐름에서 수행합니다.",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Webhook 처리 성공 또는 중복 수신 스킵",
+                content = [Content(schema = Schema(implementation = MockPaymentWebhookResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "400",
+                description = "필드 누락 또는 Enum 값 오류",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "Webhook 서명 검증 실패",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "주문 없음",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "Redis 처리 불가",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+        ],
+    )
+    @PostMapping("/webhook")
+    fun webhook(
+        @RequestBody
+        rawBody: String,
+        @RequestHeader(MockPaymentWebhookSignatureVerifier.HEADER_NAME, required = false)
+        signature: String?,
+    ): ResponseEntity<MockPaymentWebhookResponse> {
+        val response = mockPaymentWebhookService.handle(rawBody, signature)
         return ResponseEntity.ok(response)
     }
 }

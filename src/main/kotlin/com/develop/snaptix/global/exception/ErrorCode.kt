@@ -181,6 +181,11 @@ enum class ErrorCode(
         "PAYMENT-005",
         "결제 요청 중 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
     ),
+    PAYMENT_WEBHOOK_SIGNATURE_INVALID(
+        HttpStatus.UNAUTHORIZED,
+        "PAYMENT-006",
+        "Webhook 서명이 유효하지 않습니다.",
+    ),
 
     // ==================== 티켓 (TICKET) ====================
     // Path Variable이 UUID 형식(36자리)이 아닌 경우
@@ -219,6 +224,7 @@ enum class ErrorCode(
     RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "RL_001", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     DUPLICATE_ORDER(HttpStatus.CONFLICT, "OR_001", "이미 동일한 이벤트에 대한 주문이 진행 중입니다."),
     REDIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "SYS_001", "현재 시스템 점검 중입니다. 잠시 후 다시 시도해주세요."),
+    QUEUE_CAPACITY_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "QC_001", "현재 대기열에 많은 요청이 이미 들어와 있습니다. 잠시 후 다시 시도해주세요."),
     ;
 
     /** 커스텀 메시지 없이 ErrorResponse 생성 */

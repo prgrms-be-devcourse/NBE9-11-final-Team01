@@ -44,7 +44,10 @@ class GlobalExceptionHandler {
         request: HttpServletRequest,
     ): ResponseEntity<ErrorResponse> {
         logger.warn { "[BUSINESS_ERROR] code=${ex.errorCode.code}, message=${ex.message}, path=${request.requestURI}" }
-        return ResponseEntity.status(ex.httpStatus).body(ex.toErrorResponse())
+        return ResponseEntity
+            .status(ex.httpStatus)
+            .apply { ex.retryAfter?.let { header("Retry-After", it.seconds.toString()) } }
+            .body(ex.toErrorResponse())
     }
 
     // ✅ @Valid 검증 실패 (MethodArgumentNotValidException)
