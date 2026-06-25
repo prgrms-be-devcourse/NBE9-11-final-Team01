@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.order.api.service
 
+import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.domain.order.api.dto.OrderRequest
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
@@ -46,7 +47,6 @@ class OrderIngestServiceTest {
     private val totalCapacity = 100
     private val request = OrderRequest(eventId = eventPublicId.toString(), zoneId = zoneId)
 
-    // relaxed mock 으로 생성 후 테스트에 필요한 필드만 명시 스텁
     private val onSaleEventInfo = mockk<EventInfo>(relaxed = true)
 
     @BeforeEach
@@ -61,7 +61,6 @@ class OrderIngestServiceTest {
                 ownershipRedisGateway = ownershipRedisGateway,
             )
 
-        // 정상 흐름 기본 스텁 — 각 @Nested 에서 필요한 단계만 오버라이드
         every { onSaleEventInfo.status } returns "ON_SALE"
         every { onSaleEventInfo.totalCapacity } returns totalCapacity
         every { orderRateLimiter.hit(any(), any(), any()) } returns RateLimitResult(allowed = true, retryAfter = null)
@@ -69,7 +68,7 @@ class OrderIngestServiceTest {
         every { backpressureGuard.check(any(), any()) } just runs
         every { idempotencyGateway.tryAcquire(any(), any(), any()) } returns true
         every { ownershipRedisGateway.set(any(), any()) } just runs
-        every { orderStreamGateway.add(any(), any()) } returns "1700000000000-0"
+        every { orderStreamGateway.add(any()) } returns "1700000000000-0"
         every { idempotencyGateway.compareAndDelete(any(), any(), any()) } returns true
         every { ownershipRedisGateway.delete(any()) } just runs
     }
@@ -91,19 +90,18 @@ class OrderIngestServiceTest {
         }
 
         @Test
-        @DisplayName("XADD payload 에 orderId·userId·eventId·zoneId 가 모두 포함된다")
-        fun `XADD payload contains orderId userId eventId zoneId`() {
-            val payloadSlot = slot<Map<String, String>>()
-            every { orderStreamGateway.add(any(), capture(payloadSlot)) } returns "msg-id"
+        @DisplayName("XADD 에 전달되는 OrderMessage 에 orderId·userId·eventId·zoneId 가 모두 포함된다")
+        fun `OrderMessage passed to XADD contains orderId userId eventId zoneId`() {
+            val messageSlot = slot<OrderMessage>()
+            every { orderStreamGateway.add(capture(messageSlot)) } returns "msg-id"
 
             val response = sut.ingest(userId, request, ip)
-            val payload = payloadSlot.captured
+            val message = messageSlot.captured
 
-            assertThat(payload).containsKey("orderId")
-            assertThat(payload["orderId"]).isEqualTo(response.orderId)
-            assertThat(payload["userId"]).isEqualTo(userId.toString())
-            assertThat(payload["eventId"]).isEqualTo(eventPublicId.toString())
-            assertThat(payload["zoneId"]).isEqualTo(zoneId.toString())
+            assertThat(message.orderId.toString()).isEqualTo(response.orderId)
+            assertThat(message.userId).isEqualTo(userId)
+            assertThat(message.eventId).isEqualTo(eventPublicId)
+            assertThat(message.zoneId).isEqualTo(zoneId)
         }
     }
 
@@ -147,7 +145,7 @@ class OrderIngestServiceTest {
 
             verify(exactly = 0) { eventCacheGateway.get(any()) }
             verify(exactly = 0) { idempotencyGateway.tryAcquire(any(), any(), any()) }
-            verify(exactly = 0) { orderStreamGateway.add(any(), any()) }
+            verify(exactly = 0) { orderStreamGateway.add(any()) }
         }
     }
 
@@ -197,7 +195,6 @@ class OrderIngestServiceTest {
         @Test
         @DisplayName("이벤트 캐시에 totalCapacity 가 없으면 RECONCILE_FAILED 를 던진다")
         fun `throws RECONCILE_FAILED when totalCapacity is missing from event cache`() {
-            // 구 버전 캐시 항목 또는 초기화 누락 케이스 (totalCapacity = null)
             val legacyEventInfo = mockk<EventInfo>(relaxed = true)
             every { legacyEventInfo.status } returns "ON_SALE"
             every { legacyEventInfo.totalCapacity } returns null
@@ -261,20 +258,18 @@ class OrderIngestServiceTest {
             runCatching { sut.ingest(userId, request, ip) }
 
             verify(exactly = 0) { idempotencyGateway.tryAcquire(any(), any(), any()) }
-            verify(exactly = 0) { orderStreamGateway.add(any(), any()) }
+            verify(exactly = 0) { orderStreamGateway.add(any()) }
         }
 
         @Test
         @DisplayName("RATE_LIMIT_EXCEEDED 와 QUEUE_CAPACITY_EXCEEDED 는 서로 다른 에러 코드를 반환한다")
         fun `RATE_LIMIT_EXCEEDED and QUEUE_CAPACITY_EXCEEDED are distinct error codes`() {
-            // Rate Limit → RL_001
             every { orderRateLimiter.hit(any(), any(), any()) } returns
                 RateLimitResult(allowed = false, retryAfter = Duration.ofSeconds(1))
             val rateLimitException =
                 runCatching { sut.ingest(userId, request, ip) }
                     .exceptionOrNull() as BusinessException
 
-            // 정상 Rate Limit 스텁 복구 후 백프레셔 케이스
             every { orderRateLimiter.hit(any(), any(), any()) } returns
                 RateLimitResult(allowed = true, retryAfter = null)
             every { backpressureGuard.check(any(), any()) } throws BusinessException(ErrorCode.QUEUE_CAPACITY_EXCEEDED)
@@ -313,7 +308,7 @@ class OrderIngestServiceTest {
             runCatching { sut.ingest(userId, request, ip) }
 
             verify(exactly = 0) { ownershipRedisGateway.set(any(), any()) }
-            verify(exactly = 0) { orderStreamGateway.add(any(), any()) }
+            verify(exactly = 0) { orderStreamGateway.add(any()) }
         }
     }
 
@@ -325,7 +320,7 @@ class OrderIngestServiceTest {
     inner class CompensationOnXaddFailure {
         @BeforeEach
         fun stubXaddFailure() {
-            every { orderStreamGateway.add(any(), any()) } throws RuntimeException("Redis connection error")
+            every { orderStreamGateway.add(any()) } throws RuntimeException("Redis connection error")
         }
 
         @Test
@@ -400,7 +395,7 @@ class OrderIngestServiceTest {
 
             verifyOrder {
                 ownershipRedisGateway.set(any(), any())
-                orderStreamGateway.add(any(), any())
+                orderStreamGateway.add(any())
             }
         }
     }

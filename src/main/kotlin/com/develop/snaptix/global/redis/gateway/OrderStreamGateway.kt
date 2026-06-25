@@ -1,5 +1,6 @@
 package com.develop.snaptix.global.redis.gateway
 
+import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
@@ -35,13 +36,10 @@ class OrderStreamGateway(
     private val executor: ResilientRedisExecutor,
 ) {
     /** XADD 적재. 생성된 RecordId 문자열을 반환한다(payload에 orderId 포함). */
-    fun add(
-        eventPublicId: UUID,
-        payload: Map<String, String>,
-    ): String = executor.execute(RedisAction.QUEUE_XADD) {
+    fun add(message: OrderMessage): String = executor.execute(RedisAction.QUEUE_XADD) {
         redis
             .opsForStream<String, String>()
-            .add(keys.queueOrder(eventPublicId), payload)
+            .add(keys.queueOrder(message.eventId), message.toStreamPayload())
             ?.value ?: error("XADD가 RecordId를 반환하지 않았습니다.")
     }
 
