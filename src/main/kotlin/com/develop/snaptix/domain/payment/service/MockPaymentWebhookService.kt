@@ -7,8 +7,11 @@ import com.develop.snaptix.domain.payment.repository.PaymentReservationRepositor
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.ErrorResponse
+import com.develop.snaptix.global.exception.redis.RedisUnavailableException
 import com.develop.snaptix.global.redis.gateway.WebhookGuardRedisGateway
 import jakarta.validation.Validator
+import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
@@ -35,7 +38,7 @@ class MockPaymentWebhookService(
         paymentReservationRepository.findByOrderId(request.orderId)
             ?: throw BusinessException(ErrorCode.ORDER_NOT_FOUND)
 
-        if (!webhookGuardRedisGateway.markProcessed(orderId)) {
+        if (isAlreadyProcessed(orderId)) {
             return skipped(request.orderId)
         }
 
@@ -46,6 +49,7 @@ class MockPaymentWebhookService(
             } ?: throw BusinessException(ErrorCode.ORDER_NOT_FOUND)
 
         return if (result.processed) {
+            markProcessed(orderId)
             processed(request.orderId)
         } else {
             skipped(request.orderId)
@@ -92,6 +96,26 @@ class MockPaymentWebhookService(
         throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "orderId는 올바른 UUID 형식이어야 합니다.", exception)
     }
 
+    private fun isAlreadyProcessed(orderId: UUID): Boolean = try {
+        webhookGuardRedisGateway.isProcessed(orderId)
+    } catch (exception: RedisUnavailableException) {
+        logger.warn("Webhook processed key lookup failed. orderId={}", orderId, exception)
+        false
+    } catch (exception: DataAccessException) {
+        logger.warn("Webhook processed key lookup failed. orderId={}", orderId, exception)
+        false
+    }
+
+    private fun markProcessed(orderId: UUID) {
+        try {
+            webhookGuardRedisGateway.markProcessed(orderId)
+        } catch (exception: RedisUnavailableException) {
+            logger.warn("Webhook processed key registration failed after DB update. orderId={}", orderId, exception)
+        } catch (exception: DataAccessException) {
+            logger.warn("Webhook processed key registration failed after DB update. orderId={}", orderId, exception)
+        }
+    }
+
     private fun processed(orderId: String): MockPaymentWebhookResponse = MockPaymentWebhookResponse(
         orderId = orderId,
         processed = true,
@@ -105,6 +129,7 @@ class MockPaymentWebhookService(
     )
 
     companion object {
+        private val logger = LoggerFactory.getLogger(MockPaymentWebhookService::class.java)
         private const val MESSAGE_PROCESSED = "결제 결과가 처리되었습니다."
         private const val MESSAGE_SKIPPED = "이미 처리된 결제 결과입니다."
     }

@@ -62,7 +62,9 @@ class GuardsGatewayTest {
     fun `webhook 가드는 첫 등록만 true, 재등록은 false`() {
         val orderId = UUID.randomUUID()
 
+        assertThat(webhookGuard.isProcessed(orderId)).isFalse()
         assertThat(webhookGuard.markProcessed(orderId)).isTrue()
+        assertThat(webhookGuard.isProcessed(orderId)).isTrue()
         assertThat(webhookGuard.markProcessed(orderId)).isFalse()
     }
 

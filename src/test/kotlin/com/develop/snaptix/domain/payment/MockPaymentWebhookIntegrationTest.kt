@@ -150,6 +150,28 @@ class MockPaymentWebhookIntegrationTest(
     }
 
     @Test
+    fun `이미 처리된 Webhook 키가 있으면 예약 상태를 변경하지 않고 스킵한다`() {
+        val orderId = insertReservation(status = ReservationStatus.PENDING_PAYMENT)
+        redisTemplate.opsForValue().set(webhookProcessedKey(orderId), "1")
+        val body = webhookBody(orderId, MockPaymentStatus.SUCCESS)
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.orderId") { value(orderId) }
+                jsonPath("$.processed") { value(false) }
+            }
+
+        val reservation = findReservation(orderId)
+        assertThat(reservation.status).isEqualTo(ReservationStatus.PENDING_PAYMENT.name)
+        assertThat(reservation.paidAt).isNull()
+    }
+
+    @Test
     fun `이미 확정된 예약의 성공 Webhook은 상태를 변경하지 않고 스킵한다`() {
         val orderId = insertReservation(status = ReservationStatus.CONFIRMED)
         val body = webhookBody(orderId, MockPaymentStatus.SUCCESS)
@@ -168,6 +190,7 @@ class MockPaymentWebhookIntegrationTest(
         val reservation = findReservation(orderId)
         assertThat(reservation.status).isEqualTo(ReservationStatus.CONFIRMED.name)
         assertThat(reservation.paidAt).isNull()
+        assertThat(redisTemplate.hasKey(webhookProcessedKey(orderId))).isFalse()
     }
 
     @Test
@@ -189,6 +212,7 @@ class MockPaymentWebhookIntegrationTest(
         val reservation = findReservation(orderId)
         assertThat(reservation.status).isEqualTo(ReservationStatus.CANCELLED.name)
         assertThat(reservation.paidAt).isNull()
+        assertThat(redisTemplate.hasKey(webhookProcessedKey(orderId))).isFalse()
     }
 
     @Test
