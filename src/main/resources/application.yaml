@@ -101,3 +101,8 @@ snaptix:
       order-pending: 2m
       rate-limit-second: 1s
       rate-limit-minute: 60s
+
+payment:
+  mock:
+    webhook:
+      secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}

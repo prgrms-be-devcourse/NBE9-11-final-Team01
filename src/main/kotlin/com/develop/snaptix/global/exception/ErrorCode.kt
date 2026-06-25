@@ -181,6 +181,11 @@ enum class ErrorCode(
         "PAYMENT-005",
         "결제 요청 중 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
     ),
+    PAYMENT_WEBHOOK_SIGNATURE_INVALID(
+        HttpStatus.UNAUTHORIZED,
+        "PAYMENT-006",
+        "Webhook 서명이 유효하지 않습니다.",
+    ),
 
     // ==================== 티켓 (TICKET) ====================
     // Path Variable이 UUID 형식(36자리)이 아닌 경우
