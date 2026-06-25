@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.api.service
 
 import com.develop.snaptix.domain.order.api.dto.OrderAcceptedResponse
+import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.domain.order.api.dto.OrderRequest
 import com.develop.snaptix.domain.order.api.port.OrderIngestPort
 import com.develop.snaptix.global.exception.BusinessException
@@ -55,7 +56,8 @@ class OrderIngestService(
         backpressureGuard.check(eventId, totalCapacity)
         checkIdempotency(userId, eventId, orderId)
 
-        return processOrder(userId, eventId, zoneId, orderId)
+        val message = OrderMessage(orderId = orderId, userId = userId, eventId = eventId, zoneId = zoneId)
+        return processOrder(message)
     }
 
     private fun checkRateLimit(ip: String) {
@@ -92,34 +94,21 @@ class OrderIngestService(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun processOrder(
-        userId: Long,
-        eventId: UUID,
-        zoneId: Long,
-        orderId: UUID,
-    ): OrderAcceptedResponse {
+    private fun processOrder(message: OrderMessage): OrderAcceptedResponse {
         try {
-            ownershipRedisGateway.set(orderId, userId)
-
-            val payload =
-                mapOf(
-                    "orderId" to orderId.toString(),
-                    "userId" to userId.toString(),
-                    "eventId" to eventId.toString(),
-                    "zoneId" to zoneId.toString(),
-                )
-            orderStreamGateway.add(eventId, payload)
+            ownershipRedisGateway.set(message.orderId, message.userId)
+            orderStreamGateway.add(message)
 
             return OrderAcceptedResponse(
-                orderId = orderId.toString(),
-                sseUrl = "/api/v1/orders/sse/$orderId",
-                statusUrl = "/api/v1/orders/$orderId",
+                orderId = message.orderId.toString(),
+                sseUrl = "/api/v1/orders/sse/${message.orderId}",
+                statusUrl = "/api/v1/orders/${message.orderId}",
                 message = "주문 요청이 성공적으로 대기열에 접수되었습니다.",
             )
         } catch (e: Exception) {
-            log.error(e) { "[INGEST_FAILED] 큐 적재 실패로 인한 롤백 수행. orderId=$orderId" }
-            idempotencyGateway.compareAndDelete(userId, eventId, orderId)
-            ownershipRedisGateway.delete(orderId)
+            log.error(e) { "[INGEST_FAILED] 큐 적재 실패로 인한 롤백 수행. orderId=${message.orderId}" }
+            idempotencyGateway.compareAndDelete(message.userId, message.eventId, message.orderId)
+            ownershipRedisGateway.delete(message.orderId)
             throw BusinessException(ErrorCode.INTERNAL_SERVER_ERROR, "대기열 적재 중 오류가 발생했습니다.")
         }
     }
