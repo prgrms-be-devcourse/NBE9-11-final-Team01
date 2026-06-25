@@ -1,21 +1,19 @@
-package com.develop.snaptix.domain.reservation.reconcile
+package com.develop.snaptix.domain.reservation.service
 
 import com.develop.snaptix.domain.auditlog.repository.AuditLogRepository
 import com.develop.snaptix.domain.reservation.repository.ExpiredReservation
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
-import com.develop.snaptix.domain.reservation.service.ReconcileReport
-import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.resilience.ReconcileProperties
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions
+import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import kotlin.test.Test
 
 class ReconcileServiceUnitTest {
     private val reservationRepository = mockk<ReservationRepository>()
@@ -40,8 +38,8 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.released).isEqualTo(1)
-        assertThat(report.compensated).isEqualTo(1)
+        Assertions.assertThat(report.released).isEqualTo(1)
+        Assertions.assertThat(report.compensated).isEqualTo(1)
         // cutoff 방향 검증 (now - holdWindow)
         verify { reservationRepository.findExpiredPending(now.minus(Duration.ofMinutes(5))) }
         // 올바른 zoneId·orderId(UUID 변환)로 보상 호출
@@ -59,8 +57,8 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.released).isEqualTo(0)
-        assertThat(report.compensated).isEqualTo(0)
+        Assertions.assertThat(report.released).isEqualTo(0)
+        Assertions.assertThat(report.compensated).isEqualTo(0)
         verify(exactly = 0) { stockGateway.compensate(any(), any()) }
     }
 
@@ -72,8 +70,8 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.released).isEqualTo(1)
-        assertThat(report.compensated).isEqualTo(0)
+        Assertions.assertThat(report.released).isEqualTo(1)
+        Assertions.assertThat(report.compensated).isEqualTo(0)
     }
 
     @Test
@@ -82,8 +80,8 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.released).isEqualTo(0)
-        assertThat(report.compensated).isEqualTo(0)
+        Assertions.assertThat(report.released).isEqualTo(0)
+        Assertions.assertThat(report.compensated).isEqualTo(0)
         verify(exactly = 0) { reservationRepository.releaseIfPending(any()) }
         verify(exactly = 0) { stockGateway.compensate(any(), any()) }
     }
@@ -97,9 +95,9 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.released).isEqualTo(2) // 둘 다 RELEASED
-        assertThat(report.compensated).isEqualTo(1) // r2만 보상
-        assertThat(report.failed).isEqualTo(1) // r1 격리
+        Assertions.assertThat(report.released).isEqualTo(2) // 둘 다 RELEASED
+        Assertions.assertThat(report.compensated).isEqualTo(1) // r2만 보상
+        Assertions.assertThat(report.failed).isEqualTo(1) // r1 격리
     }
 
     @Test
@@ -111,8 +109,8 @@ class ReconcileServiceUnitTest {
 
         val report = service.reconcileExpired(now)
 
-        assertThat(report.compensated).isEqualTo(1) // 감사 실패가 보상 카운트를 깨지 않음
-        assertThat(report.failed).isEqualTo(0)
+        Assertions.assertThat(report.compensated).isEqualTo(1) // 감사 실패가 보상 카운트를 깨지 않음
+        Assertions.assertThat(report.failed).isEqualTo(0)
     }
 
     @Test

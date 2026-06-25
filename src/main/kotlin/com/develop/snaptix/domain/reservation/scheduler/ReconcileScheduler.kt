@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.reservation.scheduler
 
 import com.develop.snaptix.domain.reservation.service.ReconcileService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Clock
@@ -14,7 +15,7 @@ import java.time.Instant
 @Component
 class ReconcileScheduler(
     private val reconcileService: ReconcileService,
-    private val clock: Clock,
+    @Qualifier("alertClock") private val clock: Clock,
 ) {
     private val logger = KotlinLogging.logger {}
 
