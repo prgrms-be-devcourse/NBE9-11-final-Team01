@@ -20,16 +20,19 @@ class MockPaymentWebhookSignatureVerifier(
 
         val expected = hmacSha256(rawBody)
         val normalized = signature.removePrefix(SIGNATURE_PREFIX)
-        return MessageDigest.isEqual(expected.toByteArray(), normalized.toByteArray())
+        return MessageDigest.isEqual(
+            expected.toByteArray(Charsets.UTF_8),
+            normalized.toByteArray(Charsets.UTF_8),
+        )
     }
 
     fun sign(rawBody: String): String = "$SIGNATURE_PREFIX${hmacSha256(rawBody)}"
 
     private fun hmacSha256(rawBody: String): String {
         val mac = Mac.getInstance(HMAC_SHA256)
-        mac.init(SecretKeySpec(properties.secret.toByteArray(), HMAC_SHA256))
+        mac.init(SecretKeySpec(properties.secret.toByteArray(Charsets.UTF_8), HMAC_SHA256))
         return mac
-            .doFinal(rawBody.toByteArray())
+            .doFinal(rawBody.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
 
