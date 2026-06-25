@@ -4,5 +4,5 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "payment.mock.webhook")
 data class MockPaymentWebhookProperties(
-    val secret: String = "snaptix-local-mock-webhook-secret",
+    val secret: String,
 )

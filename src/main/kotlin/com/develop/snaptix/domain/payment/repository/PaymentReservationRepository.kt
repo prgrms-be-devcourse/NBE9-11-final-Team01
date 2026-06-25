@@ -67,16 +67,14 @@ class PaymentReservationRepository {
                 it[updatedAt] = now
             }
 
-        if (updated == 0) {
-            return@transaction PaymentWebhookProcessResult(
-                processed = false,
-                reservation = findByOrderIdInTransaction(orderId) ?: reservation,
-            )
-        }
-
         PaymentWebhookProcessResult(
-            processed = true,
-            reservation = reservation.copy(status = ReservationStatus.CONFIRMED),
+            processed = updated == 1,
+            reservation =
+                if (updated == 1) {
+                    reservation.copy(status = ReservationStatus.CONFIRMED)
+                } else {
+                    findByOrderIdInTransaction(orderId) ?: reservation
+                },
         )
     }
 
