@@ -68,7 +68,7 @@ class BackpressureGuardTest {
             }
 
         // then
-        assertThat(exception.errorCode).isEqualTo(ErrorCode.RATE_LIMIT_EXCEEDED)
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.QUEUE_CAPACITY_EXCEEDED)
         verify(counter).increment() // 메트릭 증가 호출 여부 검증
     }
 }

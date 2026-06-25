@@ -1,6 +1,7 @@
 package com.develop.snaptix.global.exception
 
 import org.springframework.http.HttpStatus
+import java.time.Duration
 
 /**
  * 비즈니스 로직 예외 기본 클래스
@@ -13,6 +14,7 @@ open class BusinessException(
     internal val errorCode: ErrorCode,
     customMessage: String? = null,
     cause: Throwable? = null,
+    val retryAfter: Duration? = null,
     private val fieldErrors: List<ErrorResponse.FieldError>? = null,
 ) : RuntimeException(customMessage, cause) {
     constructor(errorCode: ErrorCode) : this(errorCode, null)
