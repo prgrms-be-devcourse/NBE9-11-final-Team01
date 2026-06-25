@@ -54,9 +54,8 @@ class MockPaymentWebhookService(
             releaseHold(orderId)
             releaseClaimIfPaymentSucceeded(orderId, request.paymentStatus, result)
             compensateStockIfPaymentFailed(orderId, request.paymentStatus, result)
-        }
-
-        if (result.processed || shouldRunSideEffects) {
+            webhookGuardRedisGateway.markProcessed(orderId)
+        } else if (result.processed) {
             webhookGuardRedisGateway.markProcessed(orderId)
         }
 
