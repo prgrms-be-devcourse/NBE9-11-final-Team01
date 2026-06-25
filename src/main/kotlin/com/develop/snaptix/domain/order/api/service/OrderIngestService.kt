@@ -10,7 +10,7 @@ import com.develop.snaptix.global.redis.gateway.IdempotencyRedisGateway
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
-import com.develop.snaptix.global.redis.gateway.StockRedisGateway
+import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Service
 import java.time.Duration
@@ -20,7 +20,6 @@ import java.util.UUID
 class OrderIngestService(
     private val orderRateLimiter: RateLimitRedisGateway,
     private val eventCacheGateway: EventCacheRedisGateway,
-    private val stockRedisGateway: StockRedisGateway,
     private val backpressureGuard: BackpressureGuard,
     private val idempotencyGateway: IdempotencyRedisGateway,
     private val orderStreamGateway: OrderStreamGateway,
@@ -42,10 +41,12 @@ class OrderIngestService(
         val orderId = UUID.randomUUID()
 
         checkRateLimit(ip)
-        validateEventStatus(eventId)
-        val capacity = getCapacity(zoneId)
+        val eventInfo = validateEventStatus(eventId)
+        val totalCapacity =
+            eventInfo.totalCapacity
+                ?: throw BusinessException(ErrorCode.RECONCILE_FAILED, "이벤트 수용 인원 정보가 누락되었습니다. 이벤트 Redis 초기화를 확인해주세요.")
 
-        backpressureGuard.check(eventId, capacity)
+        backpressureGuard.check(eventId, totalCapacity)
         checkIdempotency(userId, eventId, orderId)
 
         return processOrder(userId, eventId, zoneId, orderId)
@@ -62,17 +63,15 @@ class OrderIngestService(
         }
     }
 
-    private fun validateEventStatus(eventId: UUID) {
+    private fun validateEventStatus(eventId: UUID): EventInfo {
         val eventInfo =
             eventCacheGateway.get(eventId)
                 ?: throw BusinessException(ErrorCode.RECONCILE_FAILED, "이벤트 캐시 정보를 찾을 수 없습니다.")
         if (eventInfo.status != "ON_SALE") {
             throw BusinessException(ErrorCode.INVALID_REQUEST_PARAMETER, "현재 판매 중인 이벤트가 아닙니다.")
         }
+        return eventInfo
     }
-
-    private fun getCapacity(zoneId: Long): Int = stockRedisGateway.get(zoneId)
-        ?: throw BusinessException(ErrorCode.RECONCILE_FAILED, "이벤트 캐시 정보를 찾을 수 없습니다.")
 
     private fun checkIdempotency(
         userId: Long,
