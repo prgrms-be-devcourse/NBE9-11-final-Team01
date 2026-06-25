@@ -92,7 +92,9 @@ class MockPaymentController(
         summary = "Mock PG 결제 결과 Webhook 수신",
         description =
             "Mock PG가 결제 승인 처리 후 성공 또는 실패 결과를 전달합니다. " +
-                "서버는 예약 상태 변경, 티켓 발급 또는 재고 보상을 수행합니다.",
+                "서버는 Webhook 서명과 요청 본문을 검증한 뒤 예약 상태를 조건부 변경합니다. " +
+                "SUCCESS는 PENDING_PAYMENT 예약을 CONFIRMED로, FAIL은 CANCELLED로 변경합니다. " +
+                "티켓 발급 및 Redis/SSE 후처리는 Ticket Service/Worker 흐름에서 수행합니다.",
     )
     @ApiResponses(
         value = [
@@ -104,6 +106,11 @@ class MockPaymentController(
             ApiResponse(
                 responseCode = "400",
                 description = "필드 누락 또는 Enum 값 오류",
+                content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+            ),
+            ApiResponse(
+                responseCode = "401",
+                description = "Webhook 서명 검증 실패",
                 content = [Content(schema = Schema(implementation = ErrorResponse::class))],
             ),
             ApiResponse(
