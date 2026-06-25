@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.reservation.controller
 import com.develop.snaptix.domain.reservation.service.ReconcileReport
 import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.security.auth.CurrentUserProvider
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.PostMapping
@@ -22,7 +23,7 @@ import java.time.Instant
 class AdminReconcileController(
     private val reconcileService: ReconcileService,
     private val currentUserProvider: CurrentUserProvider,
-    private val clock: Clock,
+    @Qualifier("alertClock")private val clock: Clock,
 ) {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
