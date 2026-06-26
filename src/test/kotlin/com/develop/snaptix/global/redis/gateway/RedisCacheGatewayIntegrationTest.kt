@@ -1,6 +1,7 @@
 package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
@@ -8,19 +9,11 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 import java.util.UUID
 
 @SpringBootTest
-@Testcontainers
-class RedisCacheGatewayIntegrationTest {
+class RedisCacheGatewayIntegrationTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var redisCacheGateway: RedisCacheGateway
 
@@ -30,39 +23,6 @@ class RedisCacheGatewayIntegrationTest {
     // KeyFactory 주입
     @Autowired
     private lateinit var keyFactory: RedisKeyFactory
-
-    companion object {
-        // 1. MySQL 컨테이너 추가
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        // 2. 기존 Redis 컨테이너 유지
-        @Container
-        @JvmStatic
-        val redisContainer =
-            GenericContainer(DockerImageName.parse("redis:8.8.0")).apply {
-                withExposedPorts(6379)
-            }
-
-        @DynamicPropertySource
-        @JvmStatic
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            // 3. MySQL Datasource 프로퍼티 추가
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-
-            // 4. Redis 프로퍼티 유지
-            registry.add("spring.data.redis.host") { redisContainer.host }
-            registry.add("spring.data.redis.port") { redisContainer.firstMappedPort.toString() }
-        }
-    }
 
     @AfterEach
     fun tearDown() {

@@ -3,7 +3,7 @@ package com.develop.snaptix.domain.reservation.repository
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
-import com.develop.snaptix.domain.reservation.reconcile.ReconcileIntegrationSupport
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -22,7 +22,7 @@ import java.time.temporal.ChronoUnit
 @SpringBootTest
 class DriftStockRepositoryIntegrationTest(
     @Autowired private val driftStockRepository: DriftStockRepository,
-) : ReconcileIntegrationSupport() {
+) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() = ReconcileFixtures.cleanAll().let {}
 

@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.auth
 
 import com.develop.snaptix.domain.user.entity.UsersTable
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.support.IntegrationTestSupport
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.jdbc.deleteAll
@@ -15,17 +16,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 
 private const val TEST_EMAIL = "integration-login@example.com"
 private const val TEST_PASSWORD = "SecurePass123!"
@@ -33,39 +28,9 @@ private const val PROTECTED_RESPONSE = "authenticated"
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
 class AuthIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
-) {
-    companion object {
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redis =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(6379)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redis::getHost)
-            registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
-            registry.add("jwt.secret") { "integration-test-secret-key-for-snaptix-auth-flow-256-bit" }
-        }
-    }
-
+) : IntegrationTestSupport() {
     @TestConfiguration
     class TestProtectedControllerConfig {
         @Bean

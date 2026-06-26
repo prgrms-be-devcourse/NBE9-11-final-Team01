@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -12,54 +13,16 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 import java.time.Instant
 import java.util.UUID
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
 class EventListIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
-    @Autowired private val redisTemplate: StringRedisTemplate,
-) {
-    companion object {
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redis =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(6379)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redis::getHost)
-            registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
-            registry.add("jwt.secret") { "integration-test-secret-key-for-snaptix-event-list-256-bit" }
-        }
-    }
-
+) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
         transaction {
