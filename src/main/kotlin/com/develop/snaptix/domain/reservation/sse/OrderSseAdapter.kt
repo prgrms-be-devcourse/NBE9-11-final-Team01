@@ -8,8 +8,8 @@ import com.develop.snaptix.global.realtime.SseEvent
 import com.develop.snaptix.global.realtime.port.OwnershipChecker
 import com.develop.snaptix.global.realtime.port.OwnershipResult
 import com.develop.snaptix.global.realtime.port.StateReconstructor
+import com.develop.snaptix.global.redis.config.RedisTtlProperties
 import org.springframework.stereotype.Component
-import java.time.Duration
 import java.time.Instant
 
 /**
@@ -26,6 +26,7 @@ import java.time.Instant
 class OrderSseAdapter(
     private val reservationQuery: ReservationQuery,
     private val orderOwnerStore: OrderOwnerStore,
+    private val redisTtlProperties: RedisTtlProperties,
 ) : OwnershipChecker,
     StateReconstructor {
     /**
@@ -62,22 +63,40 @@ class OrderSseAdapter(
         val data = mapOf("orderId" to key.id, "status" to reservation.status.name)
 
         return when (reservation.status) {
-            ReservationStatus.PENDING_PAYMENT ->
-                if (withinHoldWindow(reservation.createdAt)) SseEvent.ongoing(EVENT_READY_TO_PAY, data) else null
+            ReservationStatus.PENDING_PAYMENT -> {
+                val paymentDeadline = paymentDeadline(reservation.createdAt)
+                if (withinHoldWindow(paymentDeadline)) {
+                    SseEvent.ongoing(EVENT_READY_TO_PAY, readyToPayData(key.id, paymentDeadline))
+                } else {
+                    null
+                }
+            }
             ReservationStatus.CONFIRMED -> SseEvent.terminal(EVENT_TICKET_ISSUED, data)
             ReservationStatus.CANCELLED -> SseEvent.terminal(EVENT_ORDER_FAILED, data)
             ReservationStatus.RELEASED -> SseEvent.terminal(EVENT_PAYMENT_TIMEOUT, data)
         }
     }
 
-    private fun withinHoldWindow(createdAt: Instant): Boolean =
-        Instant.now().isBefore(createdAt.plus(Duration.ofMinutes(HOLD_WINDOW_MINUTES)))
+    private fun withinHoldWindow(paymentDeadline: Instant): Boolean = Instant.now().isBefore(paymentDeadline)
+
+    private fun paymentDeadline(createdAt: Instant): Instant = createdAt.plus(redisTtlProperties.orderHold)
+
+    private fun readyToPayData(
+        orderId: String,
+        paymentDeadline: Instant,
+    ): Map<String, Any> = mapOf(
+        "type" to EVENT_READY_TO_PAY,
+        "orderId" to orderId,
+        "status" to ReservationStatus.PENDING_PAYMENT.name,
+        "message" to READY_TO_PAY_MESSAGE,
+        "paymentDeadline" to paymentDeadline,
+    )
 
     companion object {
-        private const val HOLD_WINDOW_MINUTES = 5L
         private const val EVENT_READY_TO_PAY = "READY_TO_PAY"
         private const val EVENT_TICKET_ISSUED = "TICKET_ISSUED"
         private const val EVENT_ORDER_FAILED = "ORDER_FAILED"
         private const val EVENT_PAYMENT_TIMEOUT = "PAYMENT_TIMEOUT"
+        private const val READY_TO_PAY_MESSAGE = "좌석이 확보되었습니다. 결제 대기 시간 내에 결제를 완료해주세요."
     }
 }
