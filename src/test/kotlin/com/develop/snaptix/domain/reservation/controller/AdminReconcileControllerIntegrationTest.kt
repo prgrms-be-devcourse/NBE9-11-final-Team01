@@ -3,11 +3,11 @@ package com.develop.snaptix.domain.reservation.controller
 import com.develop.snaptix.domain.auditlog.entity.AuditLogsTable
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
-import com.develop.snaptix.domain.reservation.reconcile.ReconcileIntegrationSupport
 import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -31,7 +31,7 @@ import kotlin.test.Test
 class AdminReconcileControllerIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val stockRedisGateway: StockRedisGateway,
-) : ReconcileIntegrationSupport() {
+) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() = ReconcileFixtures.cleanAll().let {}
 
