@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.annotation.PreDestroy
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Async
@@ -14,6 +15,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
+@ConditionalOnProperty(
+    name = ["snaptix.order.worker.enabled"],
+    havingValue = "true",
+    matchIfMissing = true,
+)
 @Component
 class OrderStreamConsumer(
     private val orderStreamGateway: OrderStreamGateway,

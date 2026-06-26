@@ -26,7 +26,12 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
-@SpringBootTest
+@SpringBootTest(
+    properties = [
+        "jwt.secret=integration-test-secret-key-for-snaptix-order-sse-256bit",
+        "snaptix.order.worker.enabled=false",
+    ],
+)
 class OrderSseAdapterIntegrationTest : OrderSseIntegrationSupport() {
     @Autowired
     private lateinit var orderSseAdapter: OrderSseAdapter
