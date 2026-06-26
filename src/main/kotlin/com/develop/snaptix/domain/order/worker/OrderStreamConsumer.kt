@@ -70,12 +70,21 @@ class OrderStreamConsumer(
 
     // ── ContextClosed ───────────────────────────────────────────────
 
-    // [Fix] @EventListener는 클래스가 아닌 메서드에 적용해야 함
     @EventListener(ContextClosedEvent::class)
     fun onContextClosed() {
-        // SmartLifecycle.stop()보다 먼저 호출됨 → Lettuce 종료 전에 루프 중단 신호
+        // ContextClosedEvent는 SmartLifecycle 처리 이전에 발행됨.
+        // interrupt() 후 join()으로 스레드 완전 종료를 대기해야
+        // Lettuce SmartLifecycle stop 시점에 워커가 Redis I/O를 하지 않음.
+        // join() 없이 interrupt()만 하면 스레드가 아직 실행 중인 채로
+        // Lettuce event loop가 종료되어 RejectedExecutionException + OOM이 발생함.
         running.set(false)
-        workerThread?.interrupt()
+        workerThread?.let { thread ->
+            thread.interrupt()
+            if (thread != Thread.currentThread()) {
+                thread.join(SHUTDOWN_TIMEOUT_MS)
+            }
+        }
+        log.info { "OrderStreamConsumer fully stopped before infrastructure shutdown" }
     }
 
     // ── Consumer Loop ───────────────────────────────────────────────

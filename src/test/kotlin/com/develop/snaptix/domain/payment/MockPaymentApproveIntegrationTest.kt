@@ -6,23 +6,16 @@ import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
 import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.security.jwt.JwtProvider
+import com.develop.snaptix.support.IntegrationTestSupport
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
@@ -32,49 +25,11 @@ private const val APPROVE_PATH = "/api/v1/payments/mock/approve"
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
 class MockPaymentApproveIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
-    @Autowired private val redisTemplate: StringRedisTemplate,
     @Autowired private val objectMapper: ObjectMapper,
     @Autowired private val jwtProvider: JwtProvider,
-) {
-    companion object {
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redis =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(6379)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redis::getHost)
-            registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
-            registry.add("jwt.secret") { "integration-test-secret-key-for-snaptix-payment-flow-256-bit" }
-        }
-    }
-
-    @BeforeEach
-    fun setUp() {
-        ReconcileFixtures.cleanAll()
-        deleteRedisKeys("ORDER_HOLD:*")
-        deleteRedisKeys("payment:approve:*")
-    }
-
+) : IntegrationTestSupport() {
     @Test
     fun `PENDING_PAYMENT 주문은 결제 승인 요청을 전송할 수 있다`() {
         val userId = ReconcileFixtures.insertUser()

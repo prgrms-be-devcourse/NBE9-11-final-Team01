@@ -6,6 +6,7 @@ import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -15,16 +16,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 import tools.jackson.databind.ObjectMapper
 import java.time.Instant
 import java.util.UUID
@@ -33,43 +27,11 @@ private const val WEBHOOK_PATH = "/api/v1/payments/mock/webhook"
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
 class MockPaymentWebhookIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
-    @Autowired private val redisTemplate: StringRedisTemplate,
     @Autowired private val objectMapper: ObjectMapper,
     @Autowired private val signatureVerifier: MockPaymentWebhookSignatureVerifier,
-) {
-    companion object {
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redis =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(6379)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redis::getHost)
-            registry.add("spring.data.redis.port") { redis.getMappedPort(6379) }
-            registry.add("jwt.secret") { "integration-test-secret-key-for-snaptix-payment-flow-256-bit" }
-            registry.add("payment.mock.webhook.secret") { "integration-test-mock-payment-webhook-secret" }
-        }
-    }
-
+) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
         ReconcileFixtures.cleanAll()

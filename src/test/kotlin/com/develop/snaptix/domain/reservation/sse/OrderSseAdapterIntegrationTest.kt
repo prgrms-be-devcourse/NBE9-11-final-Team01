@@ -1,11 +1,9 @@
 package com.develop.snaptix.domain.reservation.sse
 
-import com.develop.snaptix.domain.auditlog.entity.AuditLogsTable
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
-import com.develop.snaptix.domain.ticket.entity.TicketsTable
 import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.domain.user.entity.UsersTable
 import com.develop.snaptix.domain.zone.entity.ZonesTable
@@ -13,29 +11,25 @@ import com.develop.snaptix.global.realtime.SseChannelKey
 import com.develop.snaptix.global.realtime.port.OwnershipResult
 import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
-import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.data.redis.core.StringRedisTemplate
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 @SpringBootTest
-class OrderSseAdapterIntegrationTest : OrderSseIntegrationSupport() {
+class OrderSseAdapterIntegrationTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var orderSseAdapter: OrderSseAdapter
 
     @Autowired
     private lateinit var ownershipRedisGateway: OwnershipRedisGateway
-
-    @Autowired
-    private lateinit var redisTemplate: StringRedisTemplate
 
     @Autowired
     private lateinit var redisKeys: RedisKeyFactory
@@ -173,15 +167,6 @@ class OrderSseAdapterIntegrationTest : OrderSseIntegrationSupport() {
         assertThat(event).isNotNull()
         assertThat(event?.name).isEqualTo("PAYMENT_TIMEOUT")
         assertThat(event?.terminal).isTrue()
-    }
-
-    private fun cleanDatabase() = transaction {
-        TicketsTable.deleteAll()
-        ReservationsTable.deleteAll()
-        AuditLogsTable.deleteAll()
-        ZonesTable.deleteAll()
-        EventsTable.deleteAll()
-        UsersTable.deleteAll()
     }
 
     private fun insertUser(email: String = "user-${UUID.randomUUID()}@test.com"): Long = transaction {
