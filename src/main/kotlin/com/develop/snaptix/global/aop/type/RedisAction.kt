@@ -89,6 +89,9 @@ enum class RedisAction {
     /** CLOSED → OPEN → HALF_OPEN 상태 전환 */
     CB_STATE_CHANGE,
 
+    /** 재구축 단일 실행 락 (SET NX / compare-and-delete) */
+    REBUILD_LOCK,
+
     // ── Rate Limit ────────────────────────────────────────────────────
 
     /** INCR + EXPIRE IP 카운터 */
