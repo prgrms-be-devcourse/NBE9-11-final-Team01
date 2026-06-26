@@ -1,13 +1,13 @@
 package com.develop.snaptix.domain.reservation.service
 
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
-import com.develop.snaptix.domain.reservation.reconcile.ReconcileIntegrationSupport
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
+import com.develop.snaptix.support.IntegrationTestSupport
 import io.mockk.clearMocks
 import io.mockk.justRun
 import io.mockk.mockk
@@ -21,7 +21,6 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
-import org.springframework.data.redis.core.StringRedisTemplate
 import java.time.Instant
 import java.util.UUID
 
@@ -44,10 +43,9 @@ import java.util.UUID
 class DriftReconciliationServiceIntegrationTest(
     @Autowired private val driftReconciliationService: DriftReconciliationService,
     @Autowired private val stockRedisGateway: StockRedisGateway,
-    @Autowired private val redisTemplate: StringRedisTemplate,
     @Autowired private val keys: RedisKeyFactory,
     @Autowired private val alertService: AlertService, // @Primary mockk
-) : ReconcileIntegrationSupport() {
+) : IntegrationTestSupport() {
     @TestConfiguration
     class MockAlertConfig {
         @Bean

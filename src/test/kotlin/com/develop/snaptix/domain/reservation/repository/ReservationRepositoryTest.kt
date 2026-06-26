@@ -2,7 +2,7 @@ package com.develop.snaptix.domain.reservation.repository
 
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
-import com.develop.snaptix.domain.reservation.reconcile.ReconcileIntegrationSupport
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.annotation.Autowired
@@ -14,7 +14,7 @@ import kotlin.test.Test
 @SpringBootTest
 class ReservationRepositoryTest(
     @Autowired private val reservationRepository: ReservationRepository,
-) : ReconcileIntegrationSupport() {
+) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() = ReconcileFixtures.cleanAll().let {}
 
