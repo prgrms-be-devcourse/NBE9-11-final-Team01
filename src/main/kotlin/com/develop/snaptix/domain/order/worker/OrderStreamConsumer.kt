@@ -4,6 +4,8 @@ import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.context.SmartLifecycle
+import org.springframework.context.event.ContextClosedEvent
+import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import java.net.InetAddress
 import java.net.UnknownHostException
@@ -55,17 +57,26 @@ class OrderStreamConsumer(
             thread.interrupt()
             // workerThread 내부에서 stop()이 호출되는 경우(테스트 mock 등) self-join 방지
             if (thread != Thread.currentThread()) {
-                thread.join(SHUTDOWN_TIMEOUT_MS) // [Fix] MagicNumber → 상수화
+                thread.join(SHUTDOWN_TIMEOUT_MS)
             }
         }
     }
 
     override fun isRunning(): Boolean = running.get()
 
-    // Redis 인프라(MAX_VALUE)보다 높아야 stop()이 먼저 호출됨
-    override fun getPhase(): Int = Int.MAX_VALUE - LIFECYCLE_PHASE_OFFSET // [Fix] MagicNumber → 상수화
+    override fun getPhase(): Int = Int.MAX_VALUE - LIFECYCLE_PHASE_OFFSET
 
     override fun isAutoStartup(): Boolean = true
+
+    // ── ContextClosed ───────────────────────────────────────────────
+
+    // [Fix] @EventListener는 클래스가 아닌 메서드에 적용해야 함
+    @EventListener(ContextClosedEvent::class)
+    fun onContextClosed() {
+        // SmartLifecycle.stop()보다 먼저 호출됨 → Lettuce 종료 전에 루프 중단 신호
+        running.set(false)
+        workerThread?.interrupt()
+    }
 
     // ── Consumer Loop ───────────────────────────────────────────────
 
@@ -141,7 +152,7 @@ class OrderStreamConsumer(
         private const val CONSUMER_GROUP = "order-workers"
         private const val IDLE_SLEEP_MS = 200L
         private const val ERROR_BACKOFF_MS = 1000L
-        private const val SHUTDOWN_TIMEOUT_MS = 5_000L // [Fix] MagicNumber
-        private const val LIFECYCLE_PHASE_OFFSET = 100 // [Fix] MagicNumber
+        private const val SHUTDOWN_TIMEOUT_MS = 5_000L
+        private const val LIFECYCLE_PHASE_OFFSET = 100
     }
 }
