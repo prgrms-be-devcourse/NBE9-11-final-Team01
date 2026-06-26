@@ -2,6 +2,7 @@ package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.redis.config.RedisTtlProperties
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,7 +11,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import java.util.UUID
 
 @SpringBootTest
-class HoldOwnerGatewayTest {
+class HoldOwnerGatewayTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var holdGateway: OrderHoldRedisGateway
 
