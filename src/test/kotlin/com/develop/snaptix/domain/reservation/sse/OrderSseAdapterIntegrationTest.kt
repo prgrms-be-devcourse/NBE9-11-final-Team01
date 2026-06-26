@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 @SpringBootTest
@@ -98,7 +99,7 @@ class OrderSseAdapterIntegrationTest : IntegrationTestSupport() {
     @Test
     fun `PENDING_PAYMENT가 홀드 윈도우 안이면 ORDER_HOLD 키가 없어도 READY_TO_PAY를 재구성한다`() {
         val ownerId = insertUser()
-        val createdAt = Instant.now().minus(Duration.ofMinutes(3))
+        val createdAt = Instant.now().minus(Duration.ofMinutes(3)).truncatedTo(ChronoUnit.SECONDS)
         val orderId =
             insertReservation(
                 userId = ownerId,
@@ -114,8 +115,11 @@ class OrderSseAdapterIntegrationTest : IntegrationTestSupport() {
         assertThat(event?.name).isEqualTo("READY_TO_PAY")
         assertThat(event?.terminal).isFalse()
         val data = event?.data as Map<*, *>
+        assertThat(data["type"]).isEqualTo("READY_TO_PAY")
         assertThat(data["orderId"]).isEqualTo(orderId)
         assertThat(data["status"]).isEqualTo(ReservationStatus.PENDING_PAYMENT.name)
+        assertThat(data["message"]).isEqualTo("좌석이 확보되었습니다. 결제 대기 시간 내에 결제를 완료해주세요.")
+        assertThat(data["paymentDeadline"]).isEqualTo(createdAt.plus(Duration.ofMinutes(5)))
     }
 
     @Test
