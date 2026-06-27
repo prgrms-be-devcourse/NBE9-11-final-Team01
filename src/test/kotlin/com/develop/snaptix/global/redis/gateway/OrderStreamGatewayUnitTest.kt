@@ -13,12 +13,21 @@ import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.data.redis.connection.stream.ReadOffset
 import org.springframework.data.redis.core.StreamOperations
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 
 class OrderStreamGatewayUnitTest {
     private val redis: StringRedisTemplate = mockk()
     private val streamOps: StreamOperations<String, String, String> = mockk()
-    private val gateway = OrderStreamGateway(redis, RedisKeyFactory(), mockk<ResilientRedisExecutor>(relaxed = true))
+    private val gateway =
+        OrderStreamGateway(
+            redis = redis,
+            keys = RedisKeyFactory(),
+            executor = mockk<ResilientRedisExecutor>(relaxed = true),
+            xAutoClaimScript = mockk<RedisScript<String>>(),
+            objectMapper = mockk<ObjectMapper>(),
+        )
 
     @BeforeEach
     fun setUp() {
