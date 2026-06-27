@@ -18,8 +18,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import java.util.UUID
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -245,10 +243,10 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         assertThat(deletedCount()).isZero()
     }
 
-    // ── 동시성 ─────────────────────────────────────────────────────────────────
+    // ── 이중 처리 방지 ──────────────────────────────────────────────────────────
 
     @Test
-    fun `동시 회수 경합 시 OrderProcessor가 정확히 1회 호출된다`() {
+    fun `ACK 완료된 메시지는 다른 reclaimer가 재처리하지 않는다`() {
         // given
         val message = orderMessage()
         val eventId = message.eventId
@@ -256,28 +254,25 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         orderStreamGateway.add(message)
         orderStreamGateway.read(eventId, CONSUMER_GROUP, "dead-consumer", READ_COUNT)
 
-        val processCount = AtomicInteger(0)
         every { activeEventDiscoveryPort.getActiveEvents() } returns listOf(eventId)
-        every { orderProcessor.process(any()) } answers {
-            processCount.incrementAndGet()
-            Unit
-        }
+        every { orderProcessor.process(any()) } just Runs
 
         Thread.sleep(IDLE_WAIT_MS)
 
-        // when: 두 reclaimer 인스턴스가 동일 PEL 메시지를 동시에 회수 시도
-        val done = CountDownLatch(2)
-        repeat(2) {
-            Thread {
-                // 각 인스턴스는 고유 consumerId를 가짐 (buildConsumerId → UUID suffix)
-                createReclaimer(claimIdleMs = SHORT_IDLE_MS).reclaimOrphans()
-                done.countDown()
-            }.start()
-        }
-        done.await(CONCURRENT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        // when: reclaimer-1이 먼저 회수·처리·ACK 완료
+        createReclaimer(claimIdleMs = SHORT_IDLE_MS).reclaimOrphans()
+        assertThat(pendingCount(eventId)).isZero() // ACK 확인
 
-        // then: XAUTOCLAIM은 Redis 단일 스레드에서 원자적으로 실행 → process 정확히 1회
-        assertThat(processCount.get()).isEqualTo(1)
+        // when: reclaimer-2가 동일 이벤트를 재시도
+        val secondProcessCount = AtomicInteger(0)
+        every { orderProcessor.process(any()) } answers {
+            secondProcessCount.incrementAndGet()
+            Unit
+        }
+        createReclaimer(claimIdleMs = SHORT_IDLE_MS).reclaimOrphans()
+
+        // then: PEL에서 제거된 메시지는 재처리되지 않는다
+        assertThat(secondProcessCount.get()).isZero()
     }
 
     // ── 오류 격리 ───────────────────────────────────────────────────────────────
@@ -335,7 +330,7 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
 
     private fun pendingCount(eventId: UUID): Long = redisTemplate
         .opsForStream<String, String>()
-        .pending("queue:order:$eventId", CONSUMER_GROUP)
+        .pending(keys.queueOrder(eventId), CONSUMER_GROUP)
         .totalPendingMessages
 
     private fun reprocessCount(): Double = meterRegistry.counter("ticketing.order.claim.reprocess.count").count()
@@ -346,7 +341,7 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
     private fun addInvalidPayload(eventId: UUID) {
         redisTemplate
             .opsForStream<String, String>()
-            .add("queue:order:$eventId", mapOf("invalid_field" to "invalid_value"))
+            .add(keys.queueOrder(eventId), mapOf("invalid_field" to "invalid_value"))
     }
 
     companion object {
@@ -355,7 +350,6 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         private const val SHORT_IDLE_MS = 1L // claim 트리거용 최소 idle
         private const val LONG_IDLE_MS = 3_600_000L // 1시간 — idle 미만 검증용
         private const val IDLE_WAIT_MS = 50L // min-idle 초과 보장 대기
-        private const val CONCURRENT_TIMEOUT_SEC = 5L
 
         /** 각 테스트가 독립적인 스트림 키를 갖도록 eventId를 매번 새로 생성한다. */
         fun orderMessage(eventId: UUID = UUID.randomUUID()) = OrderMessage(
