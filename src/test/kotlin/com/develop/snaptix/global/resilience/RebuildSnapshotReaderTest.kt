@@ -2,6 +2,7 @@ package com.develop.snaptix.global.resilience
 
 import com.develop.snaptix.domain.reservation.repository.RebuildSnapshot
 import com.develop.snaptix.domain.reservation.repository.RebuildSnapshotRepository
+import com.develop.snaptix.global.resilience.config.ReconcileProperties
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
