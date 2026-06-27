@@ -113,3 +113,8 @@ payment:
   mock:
     webhook:
       secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}
+
+order:
+  consumer:
+    claim-idle-ms: 30000   # PEL 회수 기준 유휴 시간 (p99 처리시간보다 크게)
+    claim-schedule-ms: 10000  # 회수 스케줄 주기
