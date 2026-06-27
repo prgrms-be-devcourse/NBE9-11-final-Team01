@@ -70,7 +70,11 @@ class OrderStreamGateway(
                 .opsForStream<String, String>()
                 .createGroup(keys.queueOrder(eventPublicId), ReadOffset.from("0"), group)
         } catch (e: DataAccessException) {
-            log.debug(e) { "consumer group already ensured: group=$group" }
+            if (e.isBusyGroup()) {
+                log.debug(e) { "consumer group already ensured: group=$group" }
+            } else {
+                throw e
+            }
         }
     }
 
@@ -166,8 +170,12 @@ class OrderStreamGateway(
         }
     }
 
+    private fun DataAccessException.isBusyGroup(): Boolean = listOfNotNull(message, mostSpecificCause.message)
+        .any { it.contains(BUSYGROUP_ERROR, ignoreCase = true) }
+
     companion object {
         private val log = KotlinLogging.logger {}
+        private const val BUSYGROUP_ERROR = "BUSYGROUP"
         private const val INITIAL_RECORD_ID = "0-0"
         private const val RECORD_ID_SEPARATOR = "-"
         private const val RECORD_ID_PARTS = 2
