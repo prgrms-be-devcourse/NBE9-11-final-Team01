@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.order.api.controller
 
+import com.develop.snaptix.domain.order.api.controller.docs.OrderSseApiDocs
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.realtime.SseChannelKey
@@ -17,10 +18,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 @RequestMapping("/api/v1/orders/sse")
 class OrderSseController(
     private val sseConnectionManager: SseConnectionManager,
-) {
+) : OrderSseApiDocs {
     @GetMapping("/{orderId}", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     @PreAuthorize("hasRole('USER')")
-    fun subscribe(
+    override fun subscribe(
         @AuthenticationPrincipal(expression = "userId") userId: Long?,
         @PathVariable orderId: String,
     ): SseEmitter {
