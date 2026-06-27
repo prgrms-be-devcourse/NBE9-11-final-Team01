@@ -9,6 +9,7 @@ import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
+import com.develop.snaptix.global.resilience.ReadOnlyModeHolder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

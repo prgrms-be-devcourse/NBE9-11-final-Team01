@@ -1,4 +1,4 @@
-package com.develop.snaptix.global.resilience
+package com.develop.snaptix.global.resilience.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -17,7 +17,7 @@ private const val REBUILD_EXECUTOR_QUEUE_CAPACITY = 0
  * 재구축 전용 단일 스레드 executor. (작업 명세서 v2.1 §8)
  *
  * 서킷 리스너(#9) 스레드 블로킹을 회피한다. 중복 트리거는 DiscardPolicy 로 흘리고,
- * 실제 단일 실행 보장은 [RebuildCoordinator] 의 Redis 락이 담당한다.
+ * 실제 단일 실행 보장은 [com.develop.snaptix.global.resilience.RebuildCoordinator] 의 Redis 락이 담당한다.
  */
 @Configuration
 class RebuildExecutorConfig {

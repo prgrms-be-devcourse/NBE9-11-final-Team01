@@ -1,4 +1,4 @@
-package com.develop.snaptix.global.resilience
+package com.develop.snaptix.global.resilience.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component

@@ -10,6 +10,7 @@ import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
+import java.time.Duration
 
 data class StreamGroupInfo(
     val lastDeliveredId: String?,
@@ -36,6 +37,17 @@ class EventLifeCycleRedisGateway(
         arguments: List<String>,
     ): String? = executor.execute(RedisAction.QUEUE_XADD) {
         redis.execute(initializeScript, keys, *arguments.toTypedArray())
+    }
+
+    /** 키들에 TTL(EXPIRE) 부여. 성공 개수 반환. (CLOSED 정리 백스톱) */
+    fun expireKeys(
+        keys: List<String>,
+        ttl: Duration,
+    ): Long {
+        if (keys.isEmpty()) return 0L
+        return executor.execute(RedisAction.CACHE_INVALIDATE) {
+            keys.count { key -> redis.expire(key, ttl) == true }.toLong()
+        }
     }
 
     /**

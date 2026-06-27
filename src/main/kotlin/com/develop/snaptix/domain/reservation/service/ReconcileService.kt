@@ -5,7 +5,7 @@ import com.develop.snaptix.domain.reservation.repository.ExpiredReservation
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
-import com.develop.snaptix.global.resilience.ReconcileProperties
+import com.develop.snaptix.global.resilience.config.ReconcileProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
