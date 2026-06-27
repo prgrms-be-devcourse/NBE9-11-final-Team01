@@ -36,4 +36,10 @@ class RedisScriptConfig {
     /** zone 재구축(stock SET + claimed 원자 덮어쓰기). 반환: 1 */
     @Bean
     fun rebuildZoneScript(): RedisScript<Long> = DefaultRedisScript(REBUILD_ZONE_SCRIPT, Long::class.java)
+
+    /**
+     * XAUTOCLAIM — 죽거나 느린 워커의 PEL 미확인 메시지 회수.
+     */
+    @Bean
+    fun xAutoClaimScript(): RedisScript<String> = DefaultRedisScript(XAUTOCLAIM_SCRIPT, String::class.java)
 }

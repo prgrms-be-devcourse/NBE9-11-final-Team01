@@ -4,7 +4,9 @@ import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
+import com.fasterxml.jackson.core.JsonProcessingException
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.connection.RedisStreamCommands
 import org.springframework.data.redis.connection.stream.Consumer
@@ -13,7 +15,10 @@ import org.springframework.data.redis.connection.stream.RecordId
 import org.springframework.data.redis.connection.stream.StreamOffset
 import org.springframework.data.redis.connection.stream.StreamReadOptions
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
@@ -27,6 +32,13 @@ data class StreamMessage(
 data class StreamTrimResult(
     val trimmedCount: Long,
     val minId: String?,
+)
+
+/** XAUTOCLAIM 실행 결과. */
+data class ClaimResult(
+    val claimedMessages: List<StreamMessage>,
+    val deletedIds: List<String>,
+    val nextStartId: String,
 )
 
 /**
@@ -43,6 +55,8 @@ class OrderStreamGateway(
     private val redis: StringRedisTemplate,
     private val keys: RedisKeyFactory,
     private val executor: ResilientRedisExecutor,
+    @Qualifier("xAutoClaimScript") private val xAutoClaimScript: RedisScript<String>,
+    private val objectMapper: ObjectMapper,
 ) {
     /** XADD 적재. 생성된 RecordId 문자열을 반환한다(payload에 orderId 포함). */
     fun add(message: OrderMessage): String = executor.execute(RedisAction.QUEUE_XADD) {
@@ -124,6 +138,84 @@ class OrderStreamGateway(
             } ?: 0L
 
         StreamTrimResult(trimmedCount = trimmedCount, minId = minId)
+    }
+
+    /**
+     * XAUTOCLAIM — 죽거나 느린 워커의 미확인(PEL) 메시지를 회수합니다.
+     *
+     * ## 구현 방식
+     * `connection.execute("XAUTOCLAIM", ...)` 는 Lettuce의 `RawListOutput`이 중첩 배열을
+     * 평탄화(flatten)하는 문제로 파싱이 불가능합니다. (예: `[nextId, [msgs], [deleted]]` →
+     * `[nextId, msgId, field, value]` 로 뭉개짐)
+     *
+     * 대신 Lua 스크립트에서 `redis.call('XAUTOCLAIM', ...)`을 실행하고 `cjson.encode()`로
+     * 중첩 응답 전체를 하나의 JSON 문자열로 직렬화해 반환합니다.
+     * Spring은 단일 `String`을 받으므로 중첩 파싱 문제를 완전히 우회합니다.
+     */
+    fun claim(
+        eventPublicId: UUID,
+        group: String,
+        consumer: String,
+        minIdleTime: java.time.Duration,
+        startId: String = INITIAL_RECORD_ID,
+        count: Int = 100,
+    ): ClaimResult = executor.execute(RedisAction.CLAIM_REPROCESS) {
+        val json =
+            redis.execute(
+                xAutoClaimScript,
+                listOf(keys.queueOrder(eventPublicId)),
+                group,
+                consumer,
+                minIdleTime.toMillis().toString(),
+                startId,
+                count.toString(),
+            ) ?: return@execute ClaimResult(emptyList(), emptyList(), startId)
+
+        parseClaimResult(json, startId)
+    }
+
+    /**
+     * cjson.encode(raw) 결과를 파싱합니다.
+     *
+     * 예상 JSON 구조:
+     * `[nextId, [[msgId, [f1,v1,f2,v2,...]], ...], [deletedId, ...]]`
+     */
+    private fun parseClaimResult(
+        json: String,
+        fallbackStartId: String,
+    ): ClaimResult {
+        val root =
+            try {
+                objectMapper.readTree(json)
+            } catch (e: JsonProcessingException) {
+                log.error(e) { "XAUTOCLAIM 응답 파싱 실패: json=$json" }
+                return ClaimResult(emptyList(), emptyList(), fallbackStartId)
+            }
+
+        val nextStartId = root[0]?.asString(fallbackStartId) ?: fallbackStartId
+
+        val claimedMessages =
+            buildList {
+                root[1]?.forEach { msgNode ->
+                    val id = msgNode[0]?.asString() ?: return@forEach
+                    val kvNode: JsonNode = msgNode[1] ?: return@forEach
+                    val kvList = kvNode.toList()
+                    val body = mutableMapOf<String, String>()
+                    var i = 0
+                    while (i + 1 < kvList.size) {
+                        body[kvList[i].asString()] = kvList[i + 1].asString()
+                        i += 2
+                    }
+                    add(StreamMessage(id, body))
+                }
+            }
+
+        val deletedIds =
+            buildList {
+                root[2]?.forEach { add(it.asString()) }
+            }
+
+        return ClaimResult(claimedMessages, deletedIds, nextStartId)
     }
 
     private fun safeTrimMinId(
