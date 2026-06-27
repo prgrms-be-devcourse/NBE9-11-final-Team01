@@ -55,8 +55,8 @@ class OrderStreamGateway(
     private val redis: StringRedisTemplate,
     private val keys: RedisKeyFactory,
     private val executor: ResilientRedisExecutor,
-    @Qualifier("xAutoClaimScript") private val xAutoClaimScript: RedisScript<String>,
     private val objectMapper: ObjectMapper,
+    @Qualifier("xAutoClaimScript") private val xAutoClaimScript: RedisScript<String>,
 ) {
     /** XADD 적재. 생성된 RecordId 문자열을 반환한다(payload에 orderId 포함). */
     fun add(message: OrderMessage): String = executor.execute(RedisAction.QUEUE_XADD) {
