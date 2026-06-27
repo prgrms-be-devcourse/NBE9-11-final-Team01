@@ -1,6 +1,7 @@
 package com.develop.snaptix.global.resilience
 
 import com.develop.snaptix.global.redis.gateway.RebuildLockRedisGateway
+import com.develop.snaptix.global.resilience.config.ReconcileProperties
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just

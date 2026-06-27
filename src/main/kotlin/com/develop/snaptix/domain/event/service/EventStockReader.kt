@@ -6,7 +6,7 @@ import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.exception.redis.RedisUnavailableException
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
-import com.develop.snaptix.global.resilience.ReconcileProperties
+import com.develop.snaptix.global.resilience.config.ReconcileProperties
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Component

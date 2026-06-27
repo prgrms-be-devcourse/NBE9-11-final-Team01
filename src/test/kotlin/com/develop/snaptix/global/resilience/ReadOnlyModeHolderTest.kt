@@ -1,5 +1,6 @@
 package com.develop.snaptix.global.resilience
 
+import com.develop.snaptix.global.resilience.ReadOnlyModeHolder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 

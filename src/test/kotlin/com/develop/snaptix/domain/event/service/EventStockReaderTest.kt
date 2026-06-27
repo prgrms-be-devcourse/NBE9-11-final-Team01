@@ -5,7 +5,7 @@ import com.develop.snaptix.domain.event.repository.EventListZoneRecord
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.exception.redis.RedisUnavailableException
 import com.develop.snaptix.global.redis.gateway.StockRedisGateway
-import com.develop.snaptix.global.resilience.ReconcileProperties
+import com.develop.snaptix.global.resilience.config.ReconcileProperties
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
