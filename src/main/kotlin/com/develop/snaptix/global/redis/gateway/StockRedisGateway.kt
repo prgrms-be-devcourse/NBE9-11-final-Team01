@@ -137,10 +137,8 @@ class StockRedisGateway(
         zoneId: Long,
         orderId: UUID,
     ): Boolean {
-        // 1. 팀의 키 팩토리를 통해 claimed:{zoneId} 형태의 키 생성
         val claimedKey = keys.claimed(zoneId)
 
-        // 2. 인프라 표준인 ResilientRedisExecutor와 RedisAction(READ)을 사용하여 안전하게 SISMEMBER 실행
         return redis.opsForSet().isMember(claimedKey, orderId.toString()) ?: false
     }
 }
