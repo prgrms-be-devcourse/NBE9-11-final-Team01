@@ -252,35 +252,32 @@ class OrderProcessingServiceTest {
     @Nested
     @DisplayName("2단계 — eventId 변환 실패 (zoneId 미매핑)")
     inner class EventIdResolution {
-        @Test
-        @DisplayName("zoneId 에 해당하는 event 가 없으면 IllegalArgumentException(터미널)을 던진다")
-        fun `unknown zoneId throws IllegalArgumentException`() {
+        @BeforeEach
+        fun stubNullEventId() {
             every { reservationRepository.findInternalEventId(zoneId) } returns null
-
-            assertThatThrownBy { sut.process(message) }
-                .isInstanceOf(IllegalArgumentException::class.java)
         }
 
         @Test
-        @DisplayName("zoneId 미매핑 시 1인1매 검사, 차감, INSERT 를 수행하지 않는다")
-        fun `unknown zoneId skips all subsequent steps`() {
-            every { reservationRepository.findInternalEventId(zoneId) } returns null
+        @DisplayName("zoneId 미매핑 시 ORDER_FAILED terminal SSE를 발행하고 정상 반환한다")
+        fun `publishes ORDER_FAILED terminal SSE and returns normally when zoneId is not mapped`() {
+            sut.process(message) // 예외 없이 정상 반환 자체가 ACK 허용 검증
 
-            runCatching { sut.process(message) }
+            verify(exactly = 1) {
+                sseConnectionManager.dispatch(
+                    orderSseKey,
+                    match { it.name == "ORDER_FAILED" && it.terminal },
+                )
+            }
+        }
+
+        @Test
+        @DisplayName("zoneId 미매핑 시 1인1매 검사, Redis 차감, INSERT를 수행하지 않는다")
+        fun `unknown zoneId skips all subsequent steps`() {
+            sut.process(message)
 
             verify(exactly = 0) { reservationRepository.existsActiveForUserAndEvent(any(), any()) }
             verify(exactly = 0) { stockRedisGateway.decreaseAndClaim(any(), any()) }
             verify(exactly = 0) { reservationRepository.insertPending(any(), any(), any(), any()) }
-        }
-
-        @Test
-        @DisplayName("zoneId 미매핑 시 SSE 발행을 수행하지 않는다")
-        fun `unknown zoneId does not dispatch SSE`() {
-            every { reservationRepository.findInternalEventId(zoneId) } returns null
-
-            runCatching { sut.process(message) }
-
-            verify(exactly = 0) { sseConnectionManager.dispatch(any(), any()) }
         }
     }
 
