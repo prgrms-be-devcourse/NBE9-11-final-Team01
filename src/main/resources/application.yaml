@@ -118,4 +118,4 @@ order:
   stream:
     trim:
       enabled: true
-      fixed-delay: 10m
+      fixed-delay: 3m

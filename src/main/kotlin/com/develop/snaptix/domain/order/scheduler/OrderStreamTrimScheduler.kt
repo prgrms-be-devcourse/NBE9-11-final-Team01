@@ -21,7 +21,7 @@ class OrderStreamTrimScheduler(
     private val log = KotlinLogging.logger {}
 
     @Suppress("TooGenericExceptionCaught")
-    @Scheduled(fixedDelayString = "\${order.stream.trim.fixed-delay:10m}")
+    @Scheduled(fixedDelayString = "\${order.stream.trim.fixed-delay:3m}")
     fun trimAcknowledged() {
         if (!enabled) {
             return
