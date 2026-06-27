@@ -106,3 +106,9 @@ payment:
   mock:
     webhook:
       secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}
+
+order:
+  stream:
+    trim:
+      enabled: true
+      fixed-delay: 10m
