@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.order.worker
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.SmartLifecycle
 import org.springframework.context.event.ContextClosedEvent
 import org.springframework.context.event.EventListener
@@ -24,6 +25,9 @@ class OrderStreamConsumer(
     private val consumerId: String = buildConsumerId()
     private val initializedGroups = ConcurrentHashMap.newKeySet<UUID>()
     private var workerThread: Thread? = null
+
+    @Value("\${order.consumer.auto-start:true}")
+    private var autoStart: Boolean = true
 
     private fun buildConsumerId(): String {
         val hostname =
@@ -66,7 +70,7 @@ class OrderStreamConsumer(
 
     override fun getPhase(): Int = Int.MAX_VALUE - LIFECYCLE_PHASE_OFFSET
 
-    override fun isAutoStartup(): Boolean = true
+    override fun isAutoStartup(): Boolean = autoStart
 
     // ── ContextClosed ───────────────────────────────────────────────
 
