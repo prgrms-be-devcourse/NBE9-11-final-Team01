@@ -313,14 +313,23 @@ class OrderProcessingServiceTest {
         }
 
         @Test
-        @DisplayName("1인1매 위반 시 INSERT 와 보상을 수행하지 않는다")
-        fun `duplicate active check skips insertPending and compensate`() {
+        @DisplayName("1인1매 위반 시 INSERT 를 수행하지 않는다")
+        fun `duplicate active check skips insertPending`() {
             every { reservationRepository.existsActiveForUserAndEvent(userId, internalEventId) } returns true
 
             sut.process(message)
 
             verify(exactly = 0) { reservationRepository.insertPending(any(), any(), any(), any()) }
-            verify(exactly = 0) { compensationPort.compensateIfLeaked(any(), any()) }
+        }
+
+        @Test
+        @DisplayName("1인1매 위반 시 compensateIfLeaked(orderId, zoneId) 를 호출한다 — 직전 차감 잔재 회수(H6)")
+        fun `duplicate active check calls compensateIfLeaked`() {
+            every { reservationRepository.existsActiveForUserAndEvent(userId, internalEventId) } returns true
+
+            sut.process(message)
+
+            verify(exactly = 1) { compensationPort.compensateIfLeaked(orderId, zoneId) }
         }
     }
 
@@ -375,24 +384,38 @@ class OrderProcessingServiceTest {
                 every { stockRedisGateway.decreaseAndClaim(any(), any()) } returns DecreaseResult.ALREADY
             }
 
+            // ALREADY = "직전 시도가 차감까지 성공했으나 DB 영속화가 누락된 경계 상태"
+            // 스펙(Story 3.1): 실패가 아니라 예약 보장 단계(INSERT)로 진행한다.
+
             @Test
-            @DisplayName("ALREADY 이면 IllegalStateException(비터미널)을 던진다 — PEL 잔존")
-            fun `ALREADY throws IllegalStateException as non-terminal`() {
-                assertThatThrownBy { sut.process(message) }
-                    .isInstanceOf(IllegalStateException::class.java)
+            @DisplayName("ALREADY 이면 예외를 던지지 않고 INSERT 단계로 진행한다")
+            fun `ALREADY proceeds to insert stage without throwing`() {
+                sut.process(message) // 예외 없이 반환 자체가 INSERT 단계 진입 검증
             }
 
             @Test
-            @DisplayName("ALREADY 이면 INSERT 를 수행하지 않는다")
-            fun `ALREADY does not call insertPending`() {
-                runCatching { sut.process(message) }
-                verify(exactly = 0) { reservationRepository.insertPending(any(), any(), any(), any()) }
+            @DisplayName("ALREADY 이면 insertPending 을 1회 호출한다 — 예약 보장 단계 진행")
+            fun `ALREADY calls insertPending once`() {
+                sut.process(message)
+                verify(exactly = 1) { reservationRepository.insertPending(any(), any(), any(), any()) }
             }
 
             @Test
-            @DisplayName("ALREADY 이면 보상을 수행하지 않는다")
-            fun `ALREADY does not call compensateIfLeaked`() {
-                runCatching { sut.process(message) }
+            @DisplayName("ALREADY 이면 INSERT 성공 시 READY_TO_PAY SSE 를 발행한다")
+            fun `ALREADY dispatches READY_TO_PAY SSE on successful insert`() {
+                sut.process(message)
+                verify(exactly = 1) {
+                    sseConnectionManager.dispatch(
+                        orderSseKey,
+                        match { it.name == "READY_TO_PAY" && !it.terminal },
+                    )
+                }
+            }
+
+            @Test
+            @DisplayName("ALREADY 이면 INSERT 성공 시 보상을 수행하지 않는다")
+            fun `ALREADY does not call compensateIfLeaked on successful insert`() {
+                sut.process(message)
                 verify(exactly = 0) { compensationPort.compensateIfLeaked(any(), any()) }
             }
         }

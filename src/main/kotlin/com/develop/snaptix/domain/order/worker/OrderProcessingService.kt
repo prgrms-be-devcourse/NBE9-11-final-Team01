@@ -66,6 +66,7 @@ class OrderProcessingService(
 
         if (reservationRepository.existsActiveForUserAndEvent(userId, internalEventId)) {
             log.warn { "[ORDER_WORKER_DUPLICATE_PRECHECK] 1인 1매 사전 차단 - userId=$userId" }
+            compensationPort.compensateIfLeaked(orderId, zoneId)
             publishOrderFailed(orderId, "이미 동일한 이벤트에 유효한 점유 내역이 존재합니다.")
             return
         }
@@ -87,8 +88,8 @@ class OrderProcessingService(
                 return
             }
             DecreaseResult.ALREADY -> {
-                log.info { "[ORDER_WORKER_ALREADY_CLAIMED] Redis 관문상 이미 차감된 내역 감지 - orderId=$orderId" }
-                throw IllegalStateException("Redis 차감은 성공했으나 DB 영속화가 누락된 경계 상태입니다. 재시도를 유도합니다.")
+                log.info { "[ORDER_WORKER_ALREADY_CLAIMED] 이미 차감된 내역 감지, 예약 보장 단계 진행 - orderId=$orderId" }
+                insertAndPublish(message, internalEventId)
             }
             DecreaseResult.OK -> {
                 log.info { "[ORDER_WORKER_STOCK_CLAIMED] Redis 관문 원자적 차감 성공 - zoneId=$zoneId, orderId=$orderId" }

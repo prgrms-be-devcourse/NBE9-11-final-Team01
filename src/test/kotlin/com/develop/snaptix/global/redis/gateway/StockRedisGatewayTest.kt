@@ -166,6 +166,26 @@ class StockRedisGatewayTest : IntegrationTestSupport() {
         assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(0L)
     }
 
+    @Test
+    fun `isClaimed는 orderId가 claimed 집합에 존재하면 true를 반환한다`() {
+        val orderId = UUID.randomUUID()
+        redis.opsForSet().add(claimedKey, orderId.toString())
+
+        val result = gateway.isClaimed(ZONE_ID, orderId)
+
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun `isClaimed는 orderId가 claimed 집합에 없으면 false를 반환한다`() {
+        val orderId = UUID.randomUUID()
+        // claimed 집합에 넣지 않음
+
+        val result = gateway.isClaimed(ZONE_ID, orderId)
+
+        assertThat(result).isFalse()
+    }
+
     companion object {
         private const val REDIS_PORT = 6379
         private const val ZONE_ID = 1L

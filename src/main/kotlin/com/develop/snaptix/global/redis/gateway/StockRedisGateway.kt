@@ -124,4 +124,21 @@ class StockRedisGateway(
             )
         }
     }
+
+    /**
+     * 특정 주문(orderId)이 해당 구역(zoneId)의 Redis Claimed Set에 존재하는지 선검사합니다.
+     * [이슈 #7] CompensationService의 1단계 가드로 사용되어 불필요한 DB 조회를 방지합니다.
+     *
+     * @param zoneId 구역 ID
+     * @param orderId 주문 ID
+     * @return Claimed 멤버십 존재 여부 (존재하면 true)
+     */
+    fun isClaimed(
+        zoneId: Long,
+        orderId: UUID,
+    ): Boolean {
+        val claimedKey = keys.claimed(zoneId)
+
+        return redis.opsForSet().isMember(claimedKey, orderId.toString()) ?: false
+    }
 }
