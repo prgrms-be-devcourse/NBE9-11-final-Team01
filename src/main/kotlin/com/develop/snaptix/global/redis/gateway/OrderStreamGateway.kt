@@ -6,12 +6,15 @@ import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.dao.DataAccessException
+import org.springframework.data.redis.connection.RedisStreamCommands
 import org.springframework.data.redis.connection.stream.Consumer
 import org.springframework.data.redis.connection.stream.ReadOffset
+import org.springframework.data.redis.connection.stream.RecordId
 import org.springframework.data.redis.connection.stream.StreamOffset
 import org.springframework.data.redis.connection.stream.StreamReadOptions
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /** XREADGROUP으로 읽은 Stream 메시지. */
@@ -20,11 +23,17 @@ data class StreamMessage(
     val body: Map<String, String>,
 )
 
+/** ACK 완료 메시지 trim 결과. */
+data class StreamTrimResult(
+    val trimmedCount: Long,
+    val minId: String?,
+)
+
 /**
  * 주문 큐 Redis Stream 게이트웨이(생산·소비 핵심).
  *
  * 무손실 보장은 Consumer Group + PEL + XACK 수명주기에서 나온다. 블라인드 MAXLEN 트리밍은
- * 사용하지 않는다(미확인 PEL 엔트리 유실 방지). XAUTOCLAIM 회수·MINID 트림은 ISSUE-13에서 추가.
+ * 사용하지 않는다(미확인 PEL 엔트리 유실 방지). XAUTOCLAIM 회수는 후속 작업에서 추가한다.
  *
  * 모든 호출은 [ResilientRedisExecutor]로 감싸 서킷·로깅을 일괄 적용한다.
  * (`ensureGroup`은 setup 연산이라 예외 — BUSYGROUP을 멱등 무시해야 하므로 executor 미경유)
@@ -92,7 +101,75 @@ class OrderStreamGateway(
             .acknowledge(keys.queueOrder(eventPublicId), group, messageId) ?: 0L
     }
 
+    /**
+     * XTRIM MINID — PEL에 남은 메시지는 보존하고 ACK 완료 메시지만 정리한다.
+     *
+     * - PEL이 있으면 가장 오래된 pending ID보다 오래된 엔트리만 삭제한다.
+     * - PEL이 없으면 group의 last-delivered-id까지 처리 완료된 것으로 보고 그 다음 ID를 기준으로 삭제한다.
+     */
+    fun trimAcknowledged(
+        eventPublicId: UUID,
+        group: String,
+    ): StreamTrimResult = executor.execute(RedisAction.MINID_TRIM) {
+        val streamKey = keys.queueOrder(eventPublicId)
+        val minId = safeTrimMinId(streamKey, group) ?: return@execute StreamTrimResult(0L, null)
+        val trimmedCount =
+            redis.execute { connection ->
+                connection.streamCommands().xTrim(
+                    streamKey.toByteArray(StandardCharsets.UTF_8),
+                    RedisStreamCommands.XTrimOptions.trim(
+                        RedisStreamCommands.TrimOptions.minId(RecordId.of(minId)).exact(),
+                    ),
+                )
+            } ?: 0L
+
+        StreamTrimResult(trimmedCount = trimmedCount, minId = minId)
+    }
+
+    private fun safeTrimMinId(
+        streamKey: String,
+        group: String,
+    ): String? {
+        if (redis.hasKey(streamKey) != true) {
+            return null
+        }
+
+        val groupInfo =
+            redis
+                .opsForStream<String, String>()
+                .groups(streamKey)
+                .firstOrNull { it.groupName() == group }
+
+        return groupInfo?.let {
+            val pendingSummary = redis.opsForStream<String, String>().pending(streamKey, group)
+            when {
+                pendingSummary.totalPendingMessages > 0L -> pendingSummary.minMessageId()
+                // XTRIM MINID는 기준 ID 미만만 삭제하므로 ACK 완료된 last-delivered-id까지 지우기 위해 다음 ID를 사용한다.
+                else -> nextRecordId(it.lastDeliveredId())
+            }
+        }
+    }
+
+    private fun nextRecordId(recordId: String): String? {
+        if (recordId == INITIAL_RECORD_ID) {
+            return null
+        }
+
+        val parts = recordId.split(RECORD_ID_SEPARATOR)
+        val timestamp = parts.getOrNull(0)?.toLongOrNull()
+        val sequence = parts.getOrNull(1)?.toLongOrNull()
+
+        return if (parts.size == RECORD_ID_PARTS && timestamp != null && sequence != null) {
+            "$timestamp$RECORD_ID_SEPARATOR${sequence + 1}"
+        } else {
+            null
+        }
+    }
+
     companion object {
         private val log = KotlinLogging.logger {}
+        private const val INITIAL_RECORD_ID = "0-0"
+        private const val RECORD_ID_SEPARATOR = "-"
+        private const val RECORD_ID_PARTS = 2
     }
 }
