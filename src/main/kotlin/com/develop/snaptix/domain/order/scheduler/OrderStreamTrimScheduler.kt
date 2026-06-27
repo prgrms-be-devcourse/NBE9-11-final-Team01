@@ -1,6 +1,5 @@
 package com.develop.snaptix.domain.order.scheduler
 
-import com.develop.snaptix.domain.event.repository.EventRepository
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
@@ -15,7 +14,7 @@ import java.util.UUID
  */
 @Component
 class OrderStreamTrimScheduler(
-    private val eventRepository: EventRepository,
+    private val targetRepository: OrderStreamTrimTargetRepository,
     private val orderStreamGateway: OrderStreamGateway,
     @Value("\${order.stream.trim.enabled:true}") private val enabled: Boolean,
 ) {
@@ -30,7 +29,7 @@ class OrderStreamTrimScheduler(
 
         val events =
             try {
-                eventRepository.findActiveEvents()
+                targetRepository.findTargets()
             } catch (e: RuntimeException) {
                 log.warn(e) { "Failed to load active events for order stream trim" }
                 return
@@ -39,9 +38,9 @@ class OrderStreamTrimScheduler(
         events.forEach { event ->
             val eventPublicId =
                 try {
-                    UUID.fromString(event.publicId)
+                    UUID.fromString(event.eventPublicId)
                 } catch (e: IllegalArgumentException) {
-                    log.warn(e) { "Skip order stream trim because event publicId is invalid: eventId=${event.id}" }
+                    log.warn(e) { "Skip order stream trim because event publicId is invalid: eventId=${event.eventId}" }
                     return@forEach
                 }
 
