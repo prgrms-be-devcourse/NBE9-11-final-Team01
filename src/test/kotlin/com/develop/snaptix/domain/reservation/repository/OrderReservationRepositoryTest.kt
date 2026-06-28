@@ -147,4 +147,86 @@ class OrderReservationRepositoryTest : IntegrationTestSupport() {
             }.isInstanceOf(ExposedSQLException::class.java)
         }
     }
+
+    @Nested
+    @DisplayName("findIdempotencyContextByOrderId() - 멱등 키 컨텍스트 조회")
+    inner class FindIdempotencyContextByOrderIdTest {
+        @Test
+        @DisplayName("존재하는 orderId로 조회하면 userId와 internalEventId를 반환한다")
+        fun `returns userId and internalEventId when orderId exists`() {
+            val orderId = UUID.randomUUID().toString()
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = orderId,
+                userId = testUserId,
+                eventId = testEventId,
+                zoneId = testZoneId,
+                status = ReservationStatus.PENDING_PAYMENT,
+            )
+
+            val context = sut.findIdempotencyContextByOrderId(orderId)
+
+            assertThat(context).isNotNull
+            assertThat(context!!.userId).isEqualTo(testUserId)
+            assertThat(context.internalEventId).isEqualTo(testEventId)
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 orderId로 조회하면 null을 반환한다")
+        fun `returns null when orderId does not exist`() {
+            val nonExistentOrderId = UUID.randomUUID().toString()
+
+            val context = sut.findIdempotencyContextByOrderId(nonExistentOrderId)
+
+            assertThat(context).isNull()
+        }
+
+        @Test
+        @DisplayName("여러 예약이 있어도 지정한 orderId의 컨텍스트만 반환한다")
+        fun `returns context only for the specified orderId`() {
+            val targetOrderId = UUID.randomUUID().toString()
+            val otherOrderId = UUID.randomUUID().toString()
+            val otherUserId = OrderRepositoryFixtures.insertOrderTestUser()
+            val otherEventId = OrderRepositoryFixtures.insertOrderTestEvent()
+            val otherZoneId = OrderRepositoryFixtures.insertOrderTestZone(otherEventId)
+
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = targetOrderId,
+                userId = testUserId,
+                eventId = testEventId,
+                zoneId = testZoneId,
+                status = ReservationStatus.PENDING_PAYMENT,
+            )
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = otherOrderId,
+                userId = otherUserId,
+                eventId = otherEventId,
+                zoneId = otherZoneId,
+                status = ReservationStatus.PENDING_PAYMENT,
+            )
+
+            val context = sut.findIdempotencyContextByOrderId(targetOrderId)
+
+            assertThat(context!!.userId).isEqualTo(testUserId)
+            assertThat(context.internalEventId).isEqualTo(testEventId)
+        }
+
+        @Test
+        @DisplayName("CONFIRMED 상태의 예약도 orderId로 조회할 수 있다")
+        fun `returns context regardless of reservation status`() {
+            val orderId = UUID.randomUUID().toString()
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = orderId,
+                userId = testUserId,
+                eventId = testEventId,
+                zoneId = testZoneId,
+                status = ReservationStatus.CONFIRMED,
+            )
+
+            val context = sut.findIdempotencyContextByOrderId(orderId)
+
+            assertThat(context).isNotNull
+            assertThat(context!!.userId).isEqualTo(testUserId)
+            assertThat(context.internalEventId).isEqualTo(testEventId)
+        }
+    }
 }
