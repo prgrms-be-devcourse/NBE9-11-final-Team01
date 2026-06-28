@@ -1,5 +1,8 @@
 package com.develop.snaptix.domain.event.service
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.develop.snaptix.domain.event.config.EventCleanupProperties
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
@@ -12,6 +15,7 @@ import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.slf4j.LoggerFactory
 import java.time.Duration
 
 /**
@@ -77,6 +81,40 @@ class EventRedisKeyCleanerTest {
 
         verify(exactly = 1) { gateway.deleteImmediateKeys(immediateKeys) } // 즉시 키는 DEL
         verify(exactly = 0) { gateway.deleteImmediateKeys(listOf(streamKey)) } // stream은 skip
+    }
+
+    @Test
+    fun `expiredCount가 EVENT_REDIS_CLEANUP 로그에 포함된다`() {
+        val logger = LoggerFactory.getLogger(EventRedisKeyCleaner::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        try {
+            every { gateway.getStreamLength(any()) } returns 0L
+            every { gateway.expireKeys(expirableKeys, any()) } returns 2L
+            every { gateway.deleteImmediateKeys(immediateKeys) } returns 3L
+            every { gateway.deleteImmediateKeys(listOf(streamKey)) } returns 1L
+
+            cleaner.cleanup(target)
+
+            val message =
+                appender.list
+                    .firstOrNull { it.formattedMessage.contains("EVENT_REDIS_CLEANUP") }
+                    ?.formattedMessage
+
+            assertThat(message).isNotNull.describedAs("Cleanup 로그가 출력되어야 함")
+            assertThat(message)
+                .contains("expiredKeys=2")
+                .contains("eventPublicId=$publicId")
+                .contains("deletedKeys=4")
+
+            // Gateway 호출 검증 (로직 보강)
+            verify { gateway.expireKeys(expirableKeys, any()) }
+            verify { gateway.deleteImmediateKeys(immediateKeys) }
+            verify { gateway.deleteImmediateKeys(listOf(streamKey)) }
+        } finally {
+            logger.detachAppender(appender)
+        }
     }
 
     companion object {
