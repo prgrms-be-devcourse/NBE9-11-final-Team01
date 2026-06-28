@@ -27,6 +27,11 @@ import java.time.Instant
  * - [insertPending]: PENDING_PAYMENT 예약 행 신규 삽입. #6a 성공 경로 전용.
  *   제약 위반(orderId UNIQUE·uk_active_user_event) 분기는 #6b에서 처리한다.
  *
+ * ## #8 추가 메서드
+ * - [findIdempotencyContextByOrderId]: orderId → (userId, internalEventId) 조회.
+ *   [StockReleaseService]가 order 도메인 내부에서 멱등 키 구성에 필요한 값을 조회할 때 사용한다.
+ *   payment 도메인 의존 없이 order 도메인 범위 내에서 해결한다.
+ *
  * NOTE: `transaction {}`은 Exposed Database 연결이 구성돼 있다고 가정한다.
  */
 @Repository
@@ -128,6 +133,29 @@ class ReservationRepository : ReservationQuery {
         }
     }
 
+    // ── #8 신규 추가 ────────────────────────────────────────────────────
+
+    /**
+     * orderId → 멱등 키 구성에 필요한 컨텍스트(userId, internalEventId) 조회.
+     *
+     * [StockReleaseService]가 payment 도메인에 의존하지 않고도
+     * `IdempotencyRedisGateway.compareAndDelete()` 인자를 구성할 수 있도록 한다.
+     *
+     * @return orderId에 해당하는 (userId, internalEventId). 없으면 null.
+     */
+    fun findIdempotencyContextByOrderId(orderId: String): OrderIdempotencyContext? = transaction {
+        ReservationsTable
+            .select(ReservationsTable.userId, ReservationsTable.eventId)
+            .where { ReservationsTable.orderId eq orderId }
+            .limit(1)
+            .map { row ->
+                OrderIdempotencyContext(
+                    userId = row[ReservationsTable.userId],
+                    internalEventId = row[ReservationsTable.eventId],
+                )
+            }.singleOrNull()
+    }
+
     // ── 기존 메서드 (드리프트·만료 전용) ─────────────────────────────────
 
     /**
@@ -203,3 +231,14 @@ class ReservationRepository : ReservationQuery {
                 (ReservationsTable.createdAt greaterEq holdCutoff)
         )
 }
+
+/**
+ * [StockReleaseService]가 멱등 키 구성 시 사용하는 최소 컨텍스트.
+ *
+ * `IdempotencyRedisGateway.compareAndDelete(userId, eventPublicId, orderId)` 인자 구성에 필요한
+ * `userId`와 `internalEventId(Long)`만 담는다.
+ */
+data class OrderIdempotencyContext(
+    val userId: Long,
+    val internalEventId: Long,
+)
