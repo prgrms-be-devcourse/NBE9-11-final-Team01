@@ -123,3 +123,9 @@ order:
   consumer:
     claim-idle-ms: 30000   # PEL 회수 기준 유휴 시간 (p99 처리시간보다 크게)
     claim-schedule-ms: 10000  # 회수 스케줄 주기
+  hold:
+      timeout-minutes: 5                  # ORDER_HOLD TTL 기준 (snaptix.redis.ttl.order-hold 와 일치)
+      scheduler-fixed-delay-ms: 60000    # 배치 주기 — 1분 (fixedDelay: 이전 실행 완료 후 대기)
+      batch-size: 100                     # 단일 배치 최대 처리 건수 (대량 만료 방어)
+      keyspace-listener:
+          enabled: false
