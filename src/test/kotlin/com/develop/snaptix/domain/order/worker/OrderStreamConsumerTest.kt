@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.worker
 
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.StreamMessage
 import io.mockk.clearAllMocks
@@ -25,6 +26,7 @@ class OrderStreamConsumerTest {
     private val orderStreamGateway = mockk<OrderStreamGateway>(relaxed = true)
     private val orderProcessor = mockk<OrderProcessor>(relaxed = true)
     private val activeEventDiscoveryPort = mockk<ActiveEventDiscoveryPort>()
+    private val orderStreamProperties = OrderStreamProperties(consumerGroup = CONSUMER_GROUP)
     private lateinit var consumer: OrderStreamConsumer
 
     @BeforeEach
@@ -34,6 +36,7 @@ class OrderStreamConsumerTest {
                 orderStreamGateway = orderStreamGateway,
                 orderProcessor = orderProcessor,
                 activeEventDiscoveryPort = activeEventDiscoveryPort,
+                orderStreamProperties = orderStreamProperties,
             )
     }
 
@@ -119,7 +122,7 @@ class OrderStreamConsumerTest {
             awaitConsumerStop()
 
             // Assert
-            verify(exactly = 1) { orderStreamGateway.ensureGroup(eventId, "order-workers") }
+            verify(exactly = 1) { orderStreamGateway.ensureGroup(eventId, CONSUMER_GROUP) }
             verify(exactly = 1) {
                 orderProcessor.process(
                     match {
@@ -130,7 +133,7 @@ class OrderStreamConsumerTest {
                     },
                 )
             }
-            verify(exactly = 1) { orderStreamGateway.ack(eventId, "order-workers", streamMessageId) }
+            verify(exactly = 1) { orderStreamGateway.ack(eventId, CONSUMER_GROUP, streamMessageId) }
         }
 
         @Test
@@ -151,7 +154,7 @@ class OrderStreamConsumerTest {
 
             // Assert
             verify(exactly = 0) { orderProcessor.process(any()) } // 역직렬화 실패로 위임되지 않음
-            verify(exactly = 1) { orderStreamGateway.ack(eventId, "order-workers", streamMessageId) } // 찌꺼기 방지 ACK
+            verify(exactly = 1) { orderStreamGateway.ack(eventId, CONSUMER_GROUP, streamMessageId) } // 찌꺼기 방지 ACK
         }
 
         @Test
@@ -253,5 +256,9 @@ class OrderStreamConsumerTest {
             // Assert: order-worker 스레드가 1개만 생성되었는지는 @AfterEach의 assertNoThreadLeak()에서 검증
             assertThat(consumer.isRunning()).isFalse()
         }
+    }
+
+    companion object {
+        private const val CONSUMER_GROUP = "order-workers"
     }
 }

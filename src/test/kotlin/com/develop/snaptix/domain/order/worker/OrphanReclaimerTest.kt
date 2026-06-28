@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.worker
 
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.ClaimResult
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.StreamMessage
@@ -47,6 +48,7 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
 
     private val orderProcessor: OrderProcessor = mockk()
     private val activeEventDiscoveryPort: ActiveEventDiscoveryPort = mockk()
+    private val orderStreamProperties = OrderStreamProperties(consumerGroup = CONSUMER_GROUP)
     private lateinit var meterRegistry: SimpleMeterRegistry
     private val keys = RedisKeyFactory()
 
@@ -308,6 +310,7 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
                 orderProcessor = orderProcessor,
                 activeEventDiscoveryPort = activeEventDiscoveryPort,
                 meterRegistry = meterRegistry,
+                orderStreamProperties = orderStreamProperties,
                 claimIdleMs = SHORT_IDLE_MS,
             )
 
@@ -325,6 +328,7 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         orderProcessor = orderProcessor,
         activeEventDiscoveryPort = activeEventDiscoveryPort,
         meterRegistry = meterRegistry,
+        orderStreamProperties = orderStreamProperties,
         claimIdleMs = claimIdleMs,
     )
 
