@@ -85,31 +85,36 @@ class EventRedisKeyCleanerTest {
 
     @Test
     fun `expiredCount가 EVENT_REDIS_CLEANUP 로그에 포함된다`() {
-        // given
         val logger = LoggerFactory.getLogger(EventRedisKeyCleaner::class.java) as Logger
         val appender = ListAppender<ILoggingEvent>().apply { start() }
         logger.addAppender(appender)
 
-        every { gateway.getStreamLength(any()) } returns 0L
-        every { gateway.expireKeys(expirableKeys, any()) } returns 2L // expiredCount = 2
-        every { gateway.deleteImmediateKeys(immediateKeys) } returns 3L // eventInfo(ttl 부여 OK)까지 포함
-        every { gateway.deleteImmediateKeys(listOf(streamKey)) } returns 1L
+        try {
+            every { gateway.getStreamLength(any()) } returns 0L
+            every { gateway.expireKeys(expirableKeys, any()) } returns 2L
+            every { gateway.deleteImmediateKeys(immediateKeys) } returns 3L
+            every { gateway.deleteImmediateKeys(listOf(streamKey)) } returns 1L
 
-        // when
-        cleaner.cleanup(target)
+            cleaner.cleanup(target)
 
-        // then
-        val message =
-            appender.list
-                .find { it.formattedMessage.contains("EVENT_REDIS_CLEANUP") }
-                ?.formattedMessage
+            val message =
+                appender.list
+                    .firstOrNull { it.formattedMessage.contains("EVENT_REDIS_CLEANUP") }
+                    ?.formattedMessage
 
-        assertThat(message)
-            .contains("expiredKeys=2")
-            .contains("eventPublicId=$publicId")
-            .contains("deletedKeys=4") // 3 + 1
+            assertThat(message).isNotNull.describedAs("Cleanup 로그가 출력되어야 함")
+            assertThat(message)
+                .contains("expiredKeys=2")
+                .contains("eventPublicId=$publicId")
+                .contains("deletedKeys=4")
 
-        logger.detachAppender(appender)
+            // Gateway 호출 검증 (로직 보강)
+            verify { gateway.expireKeys(expirableKeys, any()) }
+            verify { gateway.deleteImmediateKeys(immediateKeys) }
+            verify { gateway.deleteImmediateKeys(listOf(streamKey)) }
+        } finally {
+            logger.detachAppender(appender)
+        }
     }
 
     companion object {
