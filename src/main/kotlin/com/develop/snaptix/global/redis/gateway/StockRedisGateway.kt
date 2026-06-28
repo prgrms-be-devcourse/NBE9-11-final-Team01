@@ -1,4 +1,3 @@
-// 위치: src/main/kotlin/com/develop/snaptix/global/redis/gateway/StockRedisGateway.kt
 package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.aop.type.RedisAction
@@ -18,6 +17,7 @@ enum class DecreaseResult { OK, ALREADY, SOLD_OUT }
  *
  * - [decreaseAndClaim]: 차감과 claimed 기록을 단일 원자 Lua로 → 동시 요청에도 차감 1회.
  * - [compensate]: orderId가 claimed에 있을 때만 +1 & SREM → 이중 보상 방지.
+ * - [removeClaimed]: CONFIRMED 경로 전용 — 재고 +1 없이 claimed SREM만 수행.
  * - [get]: 현재 재고 조회(드리프트 점검). 키 부재 시 null.
  * - [correctStock]: 드리프트 누수 절대 SET(stock만, claimed 미접촉).
  * - [rebuild]: 상태 재구축(stock SET + claimed 원자 덮어쓰기, Story 13.2).
@@ -68,6 +68,22 @@ class StockRedisGateway(
                 orderId.toString(),
             )
         compensated == 1L
+    }
+
+    /**
+     * CONFIRMED 경로 전용 — orderId를 claimed에서 제거한다(**재고 +1 없음**).
+     *
+     * 결제 확정 시 좌석은 계속 점유 상태이므로 재고를 반납하지 않는다.
+     * [compensate]와 달리 `INCR stock`을 수행하지 않는 단순 SREM이다.
+     * SREM은 멱등이므로 orderId가 claimed에 없어도 안전하다.
+     */
+    fun removeClaimed(
+        zoneId: Long,
+        orderId: UUID,
+    ) {
+        executor.execute(RedisAction.COMPENSATE_STOCK) {
+            redis.opsForSet().remove(keys.claimed(zoneId), orderId.toString())
+        }
     }
 
     /** 현재 재고. 키 부재 시 null(드리프트 조회용). */
