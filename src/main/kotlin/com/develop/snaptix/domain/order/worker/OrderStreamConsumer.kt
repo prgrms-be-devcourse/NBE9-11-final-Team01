@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.worker
 
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
@@ -19,6 +20,7 @@ class OrderStreamConsumer(
     private val orderStreamGateway: OrderStreamGateway,
     private val orderProcessor: OrderProcessor,
     private val activeEventDiscoveryPort: ActiveEventDiscoveryPort,
+    private val orderStreamProperties: OrderStreamProperties,
 ) : SmartLifecycle {
     private val log = KotlinLogging.logger {}
     private val running = AtomicBoolean(false)
@@ -125,9 +127,9 @@ class OrderStreamConsumer(
         for (eventId in activeEventIds) {
             if (!running.get()) break
             if (initializedGroups.add(eventId)) {
-                orderStreamGateway.ensureGroup(eventId, CONSUMER_GROUP)
+                orderStreamGateway.ensureGroup(eventId, orderStreamProperties.consumerGroup)
             }
-            val messages = orderStreamGateway.read(eventId, CONSUMER_GROUP, consumerId, count = 10)
+            val messages = orderStreamGateway.read(eventId, orderStreamProperties.consumerGroup, consumerId, count = 10)
             for (msg in messages) {
                 processSingleMessage(eventId, msg.id, msg.body)
                 processedCount++
@@ -152,17 +154,16 @@ class OrderStreamConsumer(
         try {
             val orderMessage = OrderMessage.fromStreamPayload(payload)
             orderProcessor.process(orderMessage)
-            orderStreamGateway.ack(eventId, CONSUMER_GROUP, messageId)
+            orderStreamGateway.ack(eventId, orderStreamProperties.consumerGroup, messageId)
         } catch (e: IllegalArgumentException) {
             log.error(e) { "[TERMINAL_ERROR] Invalid payload format. messageId=$messageId" }
-            orderStreamGateway.ack(eventId, CONSUMER_GROUP, messageId)
+            orderStreamGateway.ack(eventId, orderStreamProperties.consumerGroup, messageId)
         } catch (e: RuntimeException) {
             log.warn(e) { "[NON_TERMINAL_ERROR] Processing failed. Left in PEL. messageId=$messageId" }
         }
     }
 
     companion object {
-        private const val CONSUMER_GROUP = "order-workers"
         private const val IDLE_SLEEP_MS = 200L
         private const val ERROR_BACKOFF_MS = 1000L
         private const val SHUTDOWN_TIMEOUT_MS = 5_000L

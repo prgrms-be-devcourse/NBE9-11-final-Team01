@@ -1,18 +1,18 @@
 package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.config.EventCleanupProperties
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.stereotype.Component
 import java.time.Duration
 import kotlin.random.Random
 
-private const val ORDER_WORKERS_GROUP = "order-workers"
-
 @Component
 class EventRedisKeyCleaner(
     private val eventLifeCycleRedisGateway: EventLifeCycleRedisGateway,
     private val eventCleanupProperties: EventCleanupProperties,
+    private val orderStreamProperties: OrderStreamProperties,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -73,7 +73,7 @@ class EventRedisKeyCleaner(
             return OrderStreamStatus(0L, 0L, true)
         }
 
-        val groupInfo = eventLifeCycleRedisGateway.getStreamGroupInfo(streamKey, ORDER_WORKERS_GROUP)
+        val groupInfo = eventLifeCycleRedisGateway.getStreamGroupInfo(streamKey, orderStreamProperties.consumerGroup)
         val pendingCount = groupInfo?.pendingCount ?: 0L
 
         val groupLastDeliveredId = groupInfo?.lastDeliveredId

@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.config.EventCleanupProperties
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
 import com.develop.snaptix.global.redis.gateway.StreamGroupInfo
 import io.mockk.every
@@ -26,7 +27,8 @@ class EventRedisKeyCleanerTest {
             ttl = Duration.ofHours(1)
             ttlJitter = 0.1
         }
-    private val cleaner = EventRedisKeyCleaner(gateway, properties)
+    private val orderStreamProperties = OrderStreamProperties(consumerGroup = CONSUMER_GROUP)
+    private val cleaner = EventRedisKeyCleaner(gateway, properties, orderStreamProperties)
 
     private val publicId = "evt-1"
     private val zoneId = 10L
@@ -67,7 +69,7 @@ class EventRedisKeyCleanerTest {
     @Test
     fun `Stream에 미처리 메시지가 있으면 stream 삭제를 스킵한다`() {
         every { gateway.getStreamLength(any()) } returns 5L
-        every { gateway.getStreamGroupInfo(any(), any()) } returns
+        every { gateway.getStreamGroupInfo(any(), CONSUMER_GROUP) } returns
             StreamGroupInfo(lastDeliveredId = "1-0", pendingCount = 3L)
         every { gateway.getStreamLastGeneratedId(any()) } returns "1-0"
 
@@ -75,5 +77,9 @@ class EventRedisKeyCleanerTest {
 
         verify(exactly = 1) { gateway.deleteImmediateKeys(immediateKeys) } // 즉시 키는 DEL
         verify(exactly = 0) { gateway.deleteImmediateKeys(listOf(streamKey)) } // stream은 skip
+    }
+
+    companion object {
+        private const val CONSUMER_GROUP = "order-workers"
     }
 }

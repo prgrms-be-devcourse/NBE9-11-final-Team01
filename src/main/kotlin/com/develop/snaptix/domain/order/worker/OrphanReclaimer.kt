@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.worker
 
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.micrometer.core.instrument.MeterRegistry
@@ -36,6 +37,7 @@ class OrphanReclaimer(
     private val orderProcessor: OrderProcessor,
     private val activeEventDiscoveryPort: ActiveEventDiscoveryPort,
     private val meterRegistry: MeterRegistry,
+    private val orderStreamProperties: OrderStreamProperties,
     @Value("\${order.consumer.claim-idle-ms:30000}") claimIdleMs: Long,
 ) {
     private val log = KotlinLogging.logger {}
@@ -91,7 +93,7 @@ class OrphanReclaimer(
         val result =
             orderStreamGateway.claim(
                 eventPublicId = eventPublicId,
-                group = CONSUMER_GROUP,
+                group = orderStreamProperties.consumerGroup,
                 consumer = consumerId,
                 minIdleTime = minIdleTime,
             )
@@ -114,7 +116,7 @@ class OrphanReclaimer(
     /** Consumer Group 이 없으면 XAUTOCLAIM 이 오류를 반환하므로 최초 1회 생성을 보장한다. */
     private fun ensureGroupOnce(eventPublicId: UUID) {
         if (initializedGroups.add(eventPublicId)) {
-            orderStreamGateway.ensureGroup(eventPublicId, CONSUMER_GROUP)
+            orderStreamGateway.ensureGroup(eventPublicId, orderStreamProperties.consumerGroup)
         }
     }
 
@@ -146,13 +148,13 @@ class OrphanReclaimer(
                     "eventId=$eventPublicId, messageId=$messageId, orderId=${message.orderId}"
             }
             orderProcessor.process(message)
-            orderStreamGateway.ack(eventPublicId, CONSUMER_GROUP, messageId)
+            orderStreamGateway.ack(eventPublicId, orderStreamProperties.consumerGroup, messageId)
         } catch (e: IllegalArgumentException) {
             // 페이로드 형식 오류는 터미널 오류 — 재처리 불가, ACK 후 PEL 에서 제거
             log.error(e) {
                 "[CLAIM_REPROCESS][TERMINAL] 잘못된 payload 형식, ACK 처리 — messageId=$messageId"
             }
-            orderStreamGateway.ack(eventPublicId, CONSUMER_GROUP, messageId)
+            orderStreamGateway.ack(eventPublicId, orderStreamProperties.consumerGroup, messageId)
         } catch (e: RuntimeException) {
             // 비터미널 오류 — XACK 생략, PEL 잔존하여 다음 주기에 재회수
             log.warn(e) {
@@ -175,7 +177,6 @@ class OrphanReclaimer(
     }
 
     companion object {
-        private const val CONSUMER_GROUP = "order-workers"
         private const val METRIC_REPROCESS_COUNT = "ticketing.order.claim.reprocess.count"
         private const val METRIC_DELETED_COUNT = "ticketing.stream.deleted.count"
         private const val CONSUMER_ID_SUFFIX_LENGTH = 6

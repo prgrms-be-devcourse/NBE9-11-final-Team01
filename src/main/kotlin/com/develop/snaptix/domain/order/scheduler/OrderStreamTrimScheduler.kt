@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.order.scheduler
 
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
@@ -16,6 +17,7 @@ import java.util.UUID
 class OrderStreamTrimScheduler(
     private val targetRepository: OrderStreamTrimTargetRepository,
     private val orderStreamGateway: OrderStreamGateway,
+    private val orderStreamProperties: OrderStreamProperties,
     @Value("\${order.stream.trim.enabled:true}") private val enabled: Boolean,
 ) {
     private val log = KotlinLogging.logger {}
@@ -51,7 +53,7 @@ class OrderStreamTrimScheduler(
     @Suppress("TooGenericExceptionCaught")
     private fun trimEventStream(eventPublicId: UUID) {
         try {
-            val result = orderStreamGateway.trimAcknowledged(eventPublicId, CONSUMER_GROUP)
+            val result = orderStreamGateway.trimAcknowledged(eventPublicId, orderStreamProperties.consumerGroup)
             if (result.trimmedCount > 0L) {
                 log.info {
                     "Order stream trim completed: eventPublicId=$eventPublicId, " +
@@ -61,9 +63,5 @@ class OrderStreamTrimScheduler(
         } catch (e: RuntimeException) {
             log.warn(e) { "Order stream trim failed: eventPublicId=$eventPublicId" }
         }
-    }
-
-    companion object {
-        private const val CONSUMER_GROUP = "order-workers"
     }
 }

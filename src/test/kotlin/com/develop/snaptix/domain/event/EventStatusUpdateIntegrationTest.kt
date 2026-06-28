@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.event
 import com.develop.snaptix.domain.event.entity.EventStatus
 import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.event.repository.EventRepository
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.support.IntegrationTestSupport
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit
 class EventStatusUpdateIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val eventRepository: EventRepository,
+    @Autowired private val orderStreamProperties: OrderStreamProperties,
 ) : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
@@ -499,9 +501,9 @@ class EventStatusUpdateIntegrationTest(
         val streamOperations = redisTemplate.opsForStream<String, String>()
 
         streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
-        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), orderStreamProperties.consumerGroup)
         streamOperations.read(
-            Consumer.from("order-workers", "consumer-1"),
+            Consumer.from(orderStreamProperties.consumerGroup, "consumer-1"),
             StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
         )
 
@@ -513,12 +515,12 @@ class EventStatusUpdateIntegrationTest(
         val streamOperations = redisTemplate.opsForStream<String, String>()
         val recordId = streamOperations.add(orderStreamKey, mapOf("orderId" to "test-order"))
 
-        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), "order-workers")
+        streamOperations.createGroup(orderStreamKey, ReadOffset.from("0-0"), orderStreamProperties.consumerGroup)
         streamOperations.read(
-            Consumer.from("order-workers", "consumer-1"),
+            Consumer.from(orderStreamProperties.consumerGroup, "consumer-1"),
             StreamOffset.create(orderStreamKey, ReadOffset.lastConsumed()),
         )
-        streamOperations.acknowledge(orderStreamKey, "order-workers", recordId)
+        streamOperations.acknowledge(orderStreamKey, orderStreamProperties.consumerGroup, recordId)
 
         return orderStreamKey
     }

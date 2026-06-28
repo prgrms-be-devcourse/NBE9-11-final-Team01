@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.event.service
 
 import com.develop.snaptix.domain.event.dto.EventBulkCreateRequest
 import com.develop.snaptix.domain.event.repository.EventInsertResult
+import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
@@ -9,13 +10,13 @@ import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 
-private const val ORDER_WORKERS_GROUP = "order-workers"
 private val EVENT_INFO_CACHE_TTL: Duration = Duration.ofHours(1)
 
 @Component
 class EventRedisInitializer(
     private val eventLifeCycleRedisGateway: EventLifeCycleRedisGateway,
     private val objectMapper: ObjectMapper,
+    private val orderStreamProperties: OrderStreamProperties,
 ) {
     fun initialize(
         event: EventInsertResult,
@@ -52,7 +53,7 @@ class EventRedisInitializer(
 
         return buildList {
             add(EVENT_INFO_CACHE_TTL.seconds.toString())
-            add(ORDER_WORKERS_GROUP)
+            add(orderStreamProperties.consumerGroup)
             add(cacheJson)
             add(zones.size.toString())
             zones.forEach { add(it.totalCapacity.toString()) }
