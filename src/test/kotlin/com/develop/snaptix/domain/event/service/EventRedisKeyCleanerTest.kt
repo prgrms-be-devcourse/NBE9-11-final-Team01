@@ -1,5 +1,8 @@
 package com.develop.snaptix.domain.event.service
 
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.develop.snaptix.domain.event.config.EventCleanupProperties
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
@@ -12,6 +15,7 @@ import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.slf4j.LoggerFactory
 import java.time.Duration
 
 /**
@@ -77,6 +81,35 @@ class EventRedisKeyCleanerTest {
 
         verify(exactly = 1) { gateway.deleteImmediateKeys(immediateKeys) } // 즉시 키는 DEL
         verify(exactly = 0) { gateway.deleteImmediateKeys(listOf(streamKey)) } // stream은 skip
+    }
+
+    @Test
+    fun `expiredCount가 EVENT_REDIS_CLEANUP 로그에 포함된다`() {
+        // given
+        val logger = LoggerFactory.getLogger(EventRedisKeyCleaner::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+
+        every { gateway.getStreamLength(any()) } returns 0L
+        every { gateway.expireKeys(expirableKeys, any()) } returns 2L // expiredCount = 2
+        every { gateway.deleteImmediateKeys(immediateKeys) } returns 3L // eventInfo(ttl 부여 OK)까지 포함
+        every { gateway.deleteImmediateKeys(listOf(streamKey)) } returns 1L
+
+        // when
+        cleaner.cleanup(target)
+
+        // then
+        val message =
+            appender.list
+                .find { it.formattedMessage.contains("EVENT_REDIS_CLEANUP") }
+                ?.formattedMessage
+
+        assertThat(message)
+            .contains("expiredKeys=2")
+            .contains("eventPublicId=$publicId")
+            .contains("deletedKeys=4") // 3 + 1
+
+        logger.detachAppender(appender)
     }
 
     companion object {
