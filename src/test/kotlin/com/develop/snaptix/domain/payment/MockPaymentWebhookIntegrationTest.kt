@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.payment.service.MockPaymentWebhookSignatureVer
 import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.entity.ReservationsTable
 import com.develop.snaptix.domain.reservation.reconcile.ReconcileFixtures
+import com.develop.snaptix.domain.ticket.entity.TicketsTable
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
@@ -322,6 +323,47 @@ class MockPaymentWebhookIntegrationTest(
         assertThat(redisTemplate.hasKey(webhookProcessedKey(orderId))).isFalse()
     }
 
+    @Test
+    fun `결제 성공 Webhook은 tickets 행을 ISSUED 상태로 생성한다`() {
+        val orderId = insertReservation(status = ReservationStatus.PENDING_PAYMENT)
+        val body = webhookBody(orderId, MockPaymentStatus.SUCCESS)
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.processed") { value(true) }
+            }
+
+        val ticket = findTicketByOrderId(orderId)
+        assertThat(ticket).isNotNull()
+        assertThat(ticket!!.status).isEqualTo("ISSUED")
+        assertThat(ticket.issuedAt).isNotNull()
+        // ticketCode가 올바른 UUID 형식인지 검증 (IllegalArgumentException 없이 파싱됨)
+        assertThat(UUID.fromString(ticket.ticketCode)).isNotNull()
+    }
+
+    @Test
+    fun `결제 실패 Webhook은 tickets 행을 생성하지 않는다`() {
+        val orderId = insertReservation(status = ReservationStatus.PENDING_PAYMENT)
+        val body = webhookBody(orderId, MockPaymentStatus.FAIL, failReason = "CARD_DECLINED")
+
+        mockMvc
+            .post(WEBHOOK_PATH) {
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+                header(MockPaymentWebhookSignatureVerifier.HEADER_NAME, signature(body))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.processed") { value(true) }
+            }
+
+        assertThat(findTicketByOrderId(orderId)).isNull()
+    }
+
     private fun insertReservation(status: ReservationStatus): String {
         val userId = ReconcileFixtures.insertUser()
         val event = ReconcileFixtures.insertEvent()
@@ -379,8 +421,36 @@ class MockPaymentWebhookIntegrationTest(
         redisTemplate.keys(pattern).forEach(redisTemplate::delete)
     }
 
+    private fun findTicketByOrderId(orderId: String): TicketSnapshot? = transaction {
+        val reservationId =
+            ReservationsTable
+                .selectAll()
+                .where { ReservationsTable.orderId eq orderId }
+                .singleOrNull()
+                ?.get(ReservationsTable.id)
+                ?: return@transaction null
+
+        TicketsTable
+            .selectAll()
+            .where { TicketsTable.reservationId eq reservationId }
+            .singleOrNull()
+            ?.let {
+                TicketSnapshot(
+                    ticketCode = it[TicketsTable.ticketCode],
+                    status = it[TicketsTable.status],
+                    issuedAt = it[TicketsTable.issuedAt],
+                )
+            }
+    }
+
     private data class ReservationSnapshot(
         val status: String,
         val paidAt: Instant?,
+    )
+
+    private data class TicketSnapshot(
+        val ticketCode: String,
+        val status: String,
+        val issuedAt: Instant?,
     )
 }

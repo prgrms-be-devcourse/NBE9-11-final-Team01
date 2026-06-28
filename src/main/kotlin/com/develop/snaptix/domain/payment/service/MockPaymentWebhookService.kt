@@ -6,6 +6,7 @@ import com.develop.snaptix.domain.payment.dto.MockPaymentStatus
 import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookRequest
 import com.develop.snaptix.domain.payment.dto.MockPaymentWebhookResponse
 import com.develop.snaptix.domain.payment.repository.PaymentReservationRepository
+import com.develop.snaptix.domain.ticket.service.TicketService
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.exception.ErrorResponse
@@ -28,6 +29,7 @@ class MockPaymentWebhookService(
     private val validator: Validator,
     private val stockReleaseService: StockReleaseService,
     private val paymentConfirmRedisCleanupService: PaymentConfirmRedisCleanupService,
+    private val ticketService: TicketService,
 ) {
     fun handle(
         rawBody: String,
@@ -62,15 +64,14 @@ class MockPaymentWebhookService(
     }
 
     /**
-     * DB 전이 성공(`processed = true`) 이후 결제 상태에 따라 Redis 후처리를 위임한다.
+     * DB 전이 성공(`processed = true`) 이후 결제 상태에 따라 후처리를 위임한다.
      *
      * - FAIL    → [StockReleaseService.release] : 재고 +1, claimed SREM, 멱등 키 DEL, ORDER_HOLD DEL, SSE ORDER_FAILED
-     * - SUCCESS → [PaymentConfirmRedisCleanupService.cleanup] :
-     *      claimed SREM only, 멱등 키 COMPLETED, ORDER_HOLD DEL, SSE TICKET_ISSUE
+     * - SUCCESS → [TicketService.issue] : tickets 행 INSERT + SSE TICKET_ISSUED(ticketCode 포함)
+     *           → [PaymentConfirmRedisCleanupService.cleanup] : claimed SREM, 멱등 키 COMPLETED, ORDER_HOLD DEL
      *
-     * Redis 후처리 실패는 결제 응답에 영향을 주지 않는다(각 서비스 내부에서 soft-fail 처리).
-     * 단, [StockReleaseService.release]의 `compensate()` 실패는 예외로 전파되므로
-     * 이 레이어에서 별도 핸들링 없이 전파한다(호출 스택 상위에서 처리).
+     * [TicketService.issue] 의 DB INSERT 실패는 예외로 전파된다.
+     * Redis 후처리 실패는 각 서비스 내부에서 soft-fail 처리되므로 결제 응답에 영향을 주지 않는다.
      */
     private fun dispatchRedisCleanup(
         paymentStatus: MockPaymentStatus,
@@ -85,13 +86,18 @@ class MockPaymentWebhookService(
                     reason = ReleaseReason.PAYMENT_FAILED,
                 )
 
-            MockPaymentStatus.SUCCESS ->
+            MockPaymentStatus.SUCCESS -> {
+                ticketService.issue(
+                    reservationId = reservation.id,
+                    orderId = orderId,
+                )
                 paymentConfirmRedisCleanupService.cleanup(
                     orderId = orderId,
                     zoneId = reservation.zoneId,
                     userId = reservation.userId,
                     internalEventId = reservation.eventId,
                 )
+            }
         }
     }
 
