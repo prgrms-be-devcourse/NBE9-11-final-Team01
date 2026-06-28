@@ -30,7 +30,7 @@ class EventRedisKeyCleaner(
 
         // (1) 백스톱: claimed/stock 에 지터 TTL 먼저 부여(event:info 는 이미 TTL이라 제외)
         val expirableKeys = target.zoneIds.flatMap { listOf(stockKey(it), claimedKey(it)) }
-        eventLifeCycleRedisGateway.expireKeys(expirableKeys, jitteredCleanupTtl())
+        val expiredCount = eventLifeCycleRedisGateway.expireKeys(expirableKeys, jitteredCleanupTtl())
 
         // (2) 즉시 정리
         val deletedCount = eventLifeCycleRedisGateway.deleteImmediateKeys(immediateKeys)
@@ -38,7 +38,8 @@ class EventRedisKeyCleaner(
 
         logger.info {
             "[EVENT_REDIS_CLEANUP] eventPublicId=${target.eventPublicId}, zoneCount=${target.zoneIds.size}, " +
-                "requestedKeys=${immediateKeys.size + 1}, deletedKeys=${deletedCount + streamDeletedCount}"
+                "requestedKeys=${immediateKeys.size + 1}, expiredKeys=$expiredCount, " +
+                " deletedKeys=${deletedCount + streamDeletedCount}"
         }
         return deletedCount + streamDeletedCount
     }
