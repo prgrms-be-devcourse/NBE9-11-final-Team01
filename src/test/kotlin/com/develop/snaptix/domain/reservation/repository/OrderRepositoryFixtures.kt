@@ -20,12 +20,12 @@ object OrderRepositoryFixtures {
             it[this.role] = UserRole.USER.name
             it[this.createdAt] = Instant.now()
             it[this.updatedAt] = Instant.now()
-        }[UsersTable.id] // insertAndGetId 대신 결과 Row에서 id 추출
+        }[UsersTable.id]
     }
 
     fun insertOrderTestEvent(
         publicId: UUID = UUID.randomUUID(),
-        status: EventStatus = EventStatus.ON_SALE, // 명세서 기준(ON_SALE 등)에 맞게 조정
+        status: EventStatus = EventStatus.ON_SALE,
     ): Long = transaction {
         EventsTable.insert {
             it[this.publicId] = publicId.toString()
@@ -55,12 +55,17 @@ object OrderRepositoryFixtures {
         }[ZonesTable.id]
     }
 
+    /**
+     * @param createdAt 기본값 [Instant.now()]. 만료 시나리오 테스트 시 과거 시각을 지정한다.
+     *   예: `Instant.now().minusSeconds(600)` → 10분 전 생성(5분 홀드 타임아웃 초과)
+     */
     fun insertOrderTestReservation(
         orderId: String,
         userId: Long,
         eventId: Long,
         zoneId: Long,
         status: ReservationStatus,
+        createdAt: Instant = Instant.now(),
     ): Long = transaction {
         ReservationsTable.insert {
             it[this.orderId] = orderId
@@ -69,7 +74,7 @@ object OrderRepositoryFixtures {
             it[this.zoneId] = zoneId
             it[this.amount] = 1
             it[this.status] = status.name
-            it[this.createdAt] = Instant.now()
+            it[this.createdAt] = createdAt
             it[this.updatedAt] = Instant.now()
         }[ReservationsTable.id]
     }

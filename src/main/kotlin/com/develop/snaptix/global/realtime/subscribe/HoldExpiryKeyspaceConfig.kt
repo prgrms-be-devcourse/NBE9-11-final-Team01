@@ -1,4 +1,4 @@
-package com.develop.snaptix.domain.order.config
+package com.develop.snaptix.global.realtime.subscribe
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
