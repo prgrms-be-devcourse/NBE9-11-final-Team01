@@ -194,6 +194,35 @@ class ReservationRepository : ReservationQuery {
             }
     }
 
+    /**
+     * 만료 PENDING 예약 — 배치 크기 제한 조회. (#10 HoldExpiryWorker 전용)
+     *
+     * [findExpiredPending]의 페이지네이션 오버로드.
+     * 한 번의 배치에서 처리할 건수를 [limit]으로 제한하여 대량 만료 시 과부하를 방지한다.
+     * 처리 못 한 건은 다음 스케줄 주기에 cutoff 조건을 다시 만족하므로 자동으로 처리된다.
+     *
+     * @param cutoff 이 시각보다 이전에 생성된 PENDING_PAYMENT 행이 대상 (`createdAt < cutoff`)
+     * @param limit  한 번에 조회할 최대 건수
+     */
+    fun findExpiredPendingPaged(
+        cutoff: Instant,
+        limit: Int,
+    ): List<ExpiredReservation> = transaction {
+        ReservationsTable
+            .select(ReservationsTable.id, ReservationsTable.orderId, ReservationsTable.zoneId)
+            .where {
+                (ReservationsTable.status eq ReservationStatus.PENDING_PAYMENT.name) and
+                    (ReservationsTable.createdAt less cutoff)
+            }.limit(limit)
+            .map {
+                ExpiredReservation(
+                    id = it[ReservationsTable.id],
+                    orderId = it[ReservationsTable.orderId],
+                    zoneId = it[ReservationsTable.zoneId],
+                )
+            }
+    }
+
     /** 조건부 UPDATE → RELEASED. affected rows(0/1) 반환. */
     fun releaseIfPending(id: Long): Int = transaction {
         ReservationsTable.update(

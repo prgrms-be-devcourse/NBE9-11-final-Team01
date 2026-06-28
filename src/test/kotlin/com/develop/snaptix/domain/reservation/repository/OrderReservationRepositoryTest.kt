@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import java.time.Instant
 import java.util.UUID
 
 @SpringBootTest
@@ -227,6 +228,195 @@ class OrderReservationRepositoryTest : IntegrationTestSupport() {
             assertThat(context).isNotNull
             assertThat(context!!.userId).isEqualTo(testUserId)
             assertThat(context.internalEventId).isEqualTo(testEventId)
+        }
+    }
+
+    @Nested
+    @DisplayName("findExpiredPendingPaged() - 만료 PENDING 배치 조회")
+    inner class FindExpiredPendingPagedTest {
+        private val holdTimeout = java.time.Duration.ofMinutes(5)
+
+        @Test
+        @DisplayName("cutoff 이전에 생성된 PENDING_PAYMENT 예약을 반환한다")
+        fun `returns PENDING_PAYMENT reservation created before cutoff`() {
+            val orderId = UUID.randomUUID().toString()
+            val expiredAt = Instant.now().minus(holdTimeout).minusSeconds(1)
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = orderId,
+                userId = testUserId,
+                eventId = testEventId,
+                zoneId = testZoneId,
+                status = ReservationStatus.PENDING_PAYMENT,
+                createdAt = expiredAt,
+            )
+
+            val result = sut.findExpiredPendingPaged(Instant.now().minus(holdTimeout), 100)
+
+            assertThat(result).hasSize(1)
+            assertThat(result.first().orderId).isEqualTo(orderId)
+        }
+
+        @Test
+        @DisplayName("cutoff 이후에 생성된 PENDING_PAYMENT 예약은 반환하지 않는다 (아직 유효)")
+        fun `does not return PENDING_PAYMENT reservation created after cutoff`() {
+            OrderRepositoryFixtures.insertOrderTestReservation(
+                orderId = UUID.randomUUID().toString(),
+                userId = testUserId,
+                eventId = testEventId,
+                zoneId = testZoneId,
+                status = ReservationStatus.PENDING_PAYMENT,
+                createdAt = Instant.now(), // 방금 생성 → 아직 만료 아님
+            )
+
+            val result = sut.findExpiredPendingPaged(Instant.now().minus(holdTimeout), 100)
+
+            assertThat(result).isEmpty()
+        }
+
+        @Test
+        @DisplayName("PENDING_PAYMENT가 아닌 상태(CONFIRMED, RELEASED, CANCELLED)는 반환하지 않는다")
+        fun `does not return non-PENDING_PAYMENT reservations even if expired`() {
+            val expiredAt = Instant.now().minus(holdTimeout).minusSeconds(10)
+            listOf(
+                ReservationStatus.CONFIRMED,
+                ReservationStatus.RELEASED,
+                ReservationStatus.CANCELLED,
+            ).forEach { status ->
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = UUID.randomUUID().toString(),
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = status,
+                    createdAt = expiredAt,
+                )
+            }
+
+            val result = sut.findExpiredPendingPaged(Instant.now().minus(holdTimeout), 100)
+
+            assertThat(result).isEmpty()
+        }
+
+        @Test
+        @DisplayName("만료 건수가 limit를 초과하면 limit 개수만 반환한다")
+        fun `returns only up to limit when expired count exceeds limit`() {
+            val expiredAt = Instant.now().minus(holdTimeout).minusSeconds(10)
+            repeat(5) {
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = UUID.randomUUID().toString(),
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.PENDING_PAYMENT,
+                    createdAt = expiredAt,
+                )
+            }
+
+            val result = sut.findExpiredPendingPaged(Instant.now().minus(holdTimeout), 3)
+
+            assertThat(result).hasSize(3)
+        }
+
+        @Test
+        @DisplayName("결과에 id, orderId, zoneId가 올바르게 포함된다")
+        fun `result contains correct id, orderId, and zoneId fields`() {
+            val orderId = UUID.randomUUID().toString()
+            val reservationId =
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = orderId,
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.PENDING_PAYMENT,
+                    createdAt = Instant.now().minus(holdTimeout).minusSeconds(1),
+                )
+
+            val result = sut.findExpiredPendingPaged(Instant.now().minus(holdTimeout), 100)
+
+            assertThat(result).hasSize(1)
+            with(result.first()) {
+                assertThat(id).isEqualTo(reservationId)
+                assertThat(this.orderId).isEqualTo(orderId)
+                assertThat(zoneId).isEqualTo(testZoneId)
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("releaseIfPending() - 조건부 RELEASED 전이")
+    inner class ReleaseIfPendingTest {
+        @Test
+        @DisplayName("PENDING_PAYMENT 예약을 RELEASED로 전이하고 affected=1을 반환한다")
+        fun `transitions PENDING_PAYMENT to RELEASED and returns 1`() {
+            val orderId = UUID.randomUUID().toString()
+            val id =
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = orderId,
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.PENDING_PAYMENT,
+                )
+
+            val affected = sut.releaseIfPending(id)
+
+            assertThat(affected).isEqualTo(1)
+            assertThat(sut.findByOrderId(orderId)?.status).isEqualTo(ReservationStatus.RELEASED)
+        }
+
+        @Test
+        @DisplayName("이미 CONFIRMED인 예약은 변경하지 않고 affected=0을 반환한다 (결제 성공 경합)")
+        fun `does not change CONFIRMED reservation and returns 0`() {
+            val orderId = UUID.randomUUID().toString()
+            val id =
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = orderId,
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.CONFIRMED,
+                )
+
+            val affected = sut.releaseIfPending(id)
+
+            assertThat(affected).isEqualTo(0)
+            assertThat(sut.findByOrderId(orderId)?.status).isEqualTo(ReservationStatus.CONFIRMED)
+        }
+
+        @Test
+        @DisplayName("이미 RELEASED인 예약에 재호출하면 affected=0을 반환한다 (멱등)")
+        fun `returns 0 on second call for already RELEASED reservation (idempotent)`() {
+            val id =
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = UUID.randomUUID().toString(),
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.RELEASED,
+                )
+
+            val affected = sut.releaseIfPending(id)
+
+            assertThat(affected).isEqualTo(0)
+        }
+
+        @Test
+        @DisplayName("첫 번째 호출은 affected=1, 두 번째 호출은 affected=0 (이중 릴리즈 방지)")
+        fun `first call returns 1, second call returns 0`() {
+            val id =
+                OrderRepositoryFixtures.insertOrderTestReservation(
+                    orderId = UUID.randomUUID().toString(),
+                    userId = testUserId,
+                    eventId = testEventId,
+                    zoneId = testZoneId,
+                    status = ReservationStatus.PENDING_PAYMENT,
+                )
+
+            val first = sut.releaseIfPending(id)
+            val second = sut.releaseIfPending(id)
+
+            assertThat(first).isEqualTo(1)
+            assertThat(second).isEqualTo(0)
         }
     }
 }
