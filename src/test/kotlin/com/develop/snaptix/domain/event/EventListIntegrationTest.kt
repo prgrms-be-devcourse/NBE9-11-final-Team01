@@ -131,6 +131,92 @@ class EventListIntegrationTest(
     }
 
     @Test
+    fun `페이징 크기 경계값을 지원한다`() {
+        insertEventWithZones(name = "Page 1", status = EventStatus.ON_SALE)
+        insertEventWithZones(name = "Page 2", status = EventStatus.ON_SALE)
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("page", "0")
+                param("size", "1")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content.length()") { value(1) }
+                jsonPath("$.pageable.pageNumber") { value(0) }
+                jsonPath("$.pageable.pageSize") { value(1) }
+                jsonPath("$.pageable.totalElements") { value(2) }
+                jsonPath("$.pageable.totalPages") { value(2) }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("page", "0")
+                param("size", "50")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content.length()") { value(2) }
+                jsonPath("$.pageable.pageSize") { value(50) }
+                jsonPath("$.pageable.totalElements") { value(2) }
+                jsonPath("$.pageable.totalPages") { value(1) }
+            }
+    }
+
+    @Test
+    fun `허용된 정렬 기준과 방향을 지원한다`() {
+        insertEventWithZones(
+            name = "Beta",
+            status = EventStatus.ON_SALE,
+            startTime = Instant.parse("2027-12-26T10:00:00Z"),
+            createdAt = Instant.parse("2027-01-03T00:00:00Z"),
+        )
+        insertEventWithZones(
+            name = "Alpha",
+            status = EventStatus.ON_SALE,
+            startTime = Instant.parse("2027-12-27T10:00:00Z"),
+            createdAt = Instant.parse("2027-01-01T00:00:00Z"),
+        )
+        insertEventWithZones(
+            name = "Gamma",
+            status = EventStatus.ON_SALE,
+            startTime = Instant.parse("2027-12-25T10:00:00Z"),
+            createdAt = Instant.parse("2027-01-02T00:00:00Z"),
+        )
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("sortBy", "startTime")
+                param("sortDir", "asc")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content[0].name") { value("Gamma") }
+                jsonPath("$.content[1].name") { value("Beta") }
+                jsonPath("$.content[2].name") { value("Alpha") }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("sortBy", "name")
+                param("sortDir", "asc")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content[0].name") { value("Alpha") }
+                jsonPath("$.content[1].name") { value("Beta") }
+                jsonPath("$.content[2].name") { value("Gamma") }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("sortBy", "createdAt")
+                param("sortDir", "desc")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content[0].name") { value("Beta") }
+                jsonPath("$.content[1].name") { value("Gamma") }
+                jsonPath("$.content[2].name") { value("Alpha") }
+            }
+    }
+
+    @Test
     fun `장소명 부분 검색을 지원한다`() {
         insertEventWithZones(name = "Seoul Event", status = EventStatus.ON_SALE, location = "서울 KSPO DOME")
         insertEventWithZones(name = "Busan Event", status = EventStatus.ON_SALE, location = "부산 BEXCO")
@@ -143,6 +229,16 @@ class EventListIntegrationTest(
                 jsonPath("$.content.length()") { value(1) }
                 jsonPath("$.content[0].name") { value("Busan Event") }
                 jsonPath("$.content[0].location") { value("부산 BEXCO") }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("location", "대구")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content.length()") { value(0) }
+                jsonPath("$.pageable.totalElements") { value(0) }
+                jsonPath("$.pageable.totalPages") { value(0) }
             }
     }
 
@@ -178,6 +274,26 @@ class EventListIntegrationTest(
                 jsonPath("$.content.length()") { value(2) }
                 jsonPath("$.content[0].name") { value("Start Date") }
                 jsonPath("$.content[1].name") { value("End Date") }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("startDate", "2027-12-28")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content.length()") { value(2) }
+                jsonPath("$.content[0].name") { value("End Date") }
+                jsonPath("$.content[1].name") { value("After Range") }
+            }
+
+        mockMvc
+            .get("/api/v1/events") {
+                param("endDate", "2027-12-26")
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.content.length()") { value(2) }
+                jsonPath("$.content[0].name") { value("Before Range") }
+                jsonPath("$.content[1].name") { value("Start Date") }
             }
     }
 
@@ -237,6 +353,7 @@ class EventListIntegrationTest(
         status: EventStatus,
         location: String = "KSPO DOME",
         startTime: Instant = Instant.parse("2027-12-25T10:00:00Z"),
+        createdAt: Instant = Instant.parse("2027-01-01T00:00:00Z"),
         zonePrices: List<Int> = listOf(100_000),
         zoneStocks: List<Int> = zonePrices.map { 1 },
     ): CreatedEvent {
@@ -253,6 +370,7 @@ class EventListIntegrationTest(
                     it[EventsTable.endTime] = startTime.plusSeconds(10_800)
                     it[EventsTable.status] = status.name
                     it[EventsTable.posterUrl] = "https://cdn.snaptix.kr/events/test.jpg"
+                    it[EventsTable.createdAt] = createdAt
                 }[EventsTable.id]
             val zoneIds =
                 zonePrices.mapIndexed { index, unitPrice ->
