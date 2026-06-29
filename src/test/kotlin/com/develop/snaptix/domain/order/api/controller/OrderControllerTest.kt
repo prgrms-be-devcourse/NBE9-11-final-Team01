@@ -243,6 +243,25 @@ class OrderControllerTest {
         }
 
         @Test
+        @DisplayName("PENDING 상태 응답에 Retry-After: 2 헤더가 포함된다")
+        fun `includes Retry-After 2 header for PENDING status`() {
+            every { orderQueryPort.getStatus(testUserId, testOrderId) } returns
+                OrderStatusResponse(
+                    orderId = testOrderId,
+                    status = OrderStatus.PENDING,
+                    message = "처리 대기 중입니다.",
+                )
+
+            mockMvc
+                .get("/api/v1/orders/{orderId}", testOrderId) {
+                    with(authentication(userAuth))
+                }.andExpect {
+                    status { isOk() }
+                    header { string("Retry-After", "2") }
+                }
+        }
+
+        @Test
         @DisplayName("READY_TO_PAY 상태 주문 조회 시 200 과 READY_TO_PAY 상태를 반환한다")
         fun `returns 200 with READY_TO_PAY status`() {
             every { orderQueryPort.getStatus(testUserId, testOrderId) } returns
@@ -257,6 +276,24 @@ class OrderControllerTest {
                 }.andExpect {
                     status { isOk() }
                     jsonPath("$.status") { value("READY_TO_PAY") }
+                }
+        }
+
+        @Test
+        @DisplayName("PENDING 이외 상태 응답에 Retry-After 헤더가 포함되지 않는다")
+        fun `does not include Retry-After header for non-PENDING status`() {
+            every { orderQueryPort.getStatus(testUserId, testOrderId) } returns
+                OrderStatusResponse(
+                    orderId = testOrderId,
+                    status = OrderStatus.READY_TO_PAY,
+                )
+
+            mockMvc
+                .get("/api/v1/orders/{orderId}", testOrderId) {
+                    with(authentication(userAuth))
+                }.andExpect {
+                    status { isOk() }
+                    header { doesNotExist("Retry-After") }
                 }
         }
 

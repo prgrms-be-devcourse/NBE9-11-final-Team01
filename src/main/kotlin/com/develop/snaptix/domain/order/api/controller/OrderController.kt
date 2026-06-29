@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.order.api.controller
 
 import com.develop.snaptix.domain.order.api.dto.OrderAcceptedResponse
 import com.develop.snaptix.domain.order.api.dto.OrderRequest
+import com.develop.snaptix.domain.order.api.dto.OrderStatus
 import com.develop.snaptix.domain.order.api.dto.OrderStatusResponse
 import com.develop.snaptix.domain.order.api.port.OrderIngestPort
 import com.develop.snaptix.domain.order.api.port.OrderQueryPort
@@ -44,6 +45,12 @@ class OrderController(
         return ResponseEntity.accepted().body(response)
     }
 
+    /**
+     * 주문 상태 단건 조회 (Story 10.1-B, 4.2).
+     *
+     * PENDING 상태(워커 미처리 or 홀드 만료)일 때 `Retry-After: 2` 헤더를 추가해
+     * 클라이언트가 2초 후 재폴링하도록 안내한다.
+     */
     @GetMapping("/{orderId}")
     fun getOrderStatus(
         @AuthenticationPrincipal(expression = "#this") userId: Long?,
@@ -52,6 +59,18 @@ class OrderController(
         val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
 
         val response = orderQueryPort.getStatus(validUserId, orderId)
-        return ResponseEntity.ok(response)
+
+        return if (response.status == OrderStatus.PENDING) {
+            ResponseEntity
+                .ok()
+                .header("Retry-After", POLLING_RETRY_AFTER_SECONDS)
+                .body(response)
+        } else {
+            ResponseEntity.ok(response)
+        }
+    }
+
+    companion object {
+        private const val POLLING_RETRY_AFTER_SECONDS = "2"
     }
 }

@@ -22,58 +22,84 @@ import java.util.UUID
  */
 object TicketFixtures {
     /**
+     * 예약 1건의 내부 PK와 orderId를 함께 반환하는 픽스처 결과.
+     *
+     * [findTicketCodeByOrderId] 통합 테스트처럼 orderId가 함께 필요한 경우에 사용한다.
+     */
+    data class ReservationFixture(
+        val reservationId: Long,
+        val orderId: String,
+    )
+
+    /**
      * tickets 행 삽입에 필요한 FK(`reservation_id`)를 갖춘 예약 1건을 삽입하고
      * 해당 예약의 내부 PK(`reservationId`)를 반환한다.
+     *
+     * orderId도 필요하면 [insertReservationAndGetFixture]를 사용한다.
      *
      * 삽입 순서: users → events → zones → reservations
      *
      * @param status 예약 상태 (기본값 [ReservationStatus.CONFIRMED])
      * @return `reservations.id` (PK) — `TicketsTable.reservationId` FK로 사용
      */
-    fun insertReservationAndGetId(status: ReservationStatus = ReservationStatus.CONFIRMED): Long = transaction {
-        val userId =
-            UsersTable.insert {
-                it[UsersTable.email] = "ticket-test-${UUID.randomUUID()}@snaptix.com"
-                it[UsersTable.password] = "encoded-password"
-                it[UsersTable.role] = UserRole.USER.name
-            }[UsersTable.id]
+    fun insertReservationAndGetId(status: ReservationStatus = ReservationStatus.CONFIRMED): Long =
+        insertReservationAndGetFixture(status).reservationId
 
-        val now = Instant.now()
-        val eventId =
-            EventsTable.insert {
-                it[EventsTable.publicId] = UUID.randomUUID().toString()
-                it[EventsTable.name] = "Ticket Test Event"
-                it[EventsTable.location] = "Test Venue"
-                it[EventsTable.startTime] = now.plusSeconds(3_600)
-                it[EventsTable.endTime] = now.plusSeconds(7_200)
-                it[EventsTable.status] = EventStatus.ON_SALE.name
-            }[EventsTable.id]
+    /**
+     * 예약 1건을 삽입하고 [ReservationFixture](reservationId + orderId)를 반환한다.
+     *
+     * `findTicketCodeByOrderId` 같이 orderId 기반 조회를 검증할 때 사용한다.
+     *
+     * @param status 예약 상태 (기본값 [ReservationStatus.CONFIRMED])
+     */
+    fun insertReservationAndGetFixture(status: ReservationStatus = ReservationStatus.CONFIRMED): ReservationFixture =
+        transaction {
+            val userId =
+                UsersTable.insert {
+                    it[UsersTable.email] = "ticket-test-${UUID.randomUUID()}@snaptix.com"
+                    it[UsersTable.password] = "encoded-password"
+                    it[UsersTable.role] = UserRole.USER.name
+                }[UsersTable.id]
 
-        val zoneId =
-            ZonesTable.insert {
-                it[ZonesTable.publicId] = UUID.randomUUID().toString()
-                it[ZonesTable.eventId] = eventId
-                it[ZonesTable.name] = "A"
-                it[ZonesTable.unitPrice] = 100_000
-                it[ZonesTable.totalCapacity] = 10
-            }[ZonesTable.id]
+            val now = Instant.now()
+            val eventId =
+                EventsTable.insert {
+                    it[EventsTable.publicId] = UUID.randomUUID().toString()
+                    it[EventsTable.name] = "Ticket Test Event"
+                    it[EventsTable.location] = "Test Venue"
+                    it[EventsTable.startTime] = now.plusSeconds(3_600)
+                    it[EventsTable.endTime] = now.plusSeconds(7_200)
+                    it[EventsTable.status] = EventStatus.ON_SALE.name
+                }[EventsTable.id]
 
-        val orderId = UUID.randomUUID().toString()
-        ReservationsTable.insert {
-            it[ReservationsTable.orderId] = orderId
-            it[ReservationsTable.userId] = userId
-            it[ReservationsTable.eventId] = eventId
-            it[ReservationsTable.zoneId] = zoneId
-            it[ReservationsTable.amount] = 1
-            it[ReservationsTable.status] = status.name
-            it[ReservationsTable.createdAt] = now
-            it[ReservationsTable.updatedAt] = now
+            val zoneId =
+                ZonesTable.insert {
+                    it[ZonesTable.publicId] = UUID.randomUUID().toString()
+                    it[ZonesTable.eventId] = eventId
+                    it[ZonesTable.name] = "A"
+                    it[ZonesTable.unitPrice] = 100_000
+                    it[ZonesTable.totalCapacity] = 10
+                }[ZonesTable.id]
+
+            val orderId = UUID.randomUUID().toString()
+            ReservationsTable.insert {
+                it[ReservationsTable.orderId] = orderId
+                it[ReservationsTable.userId] = userId
+                it[ReservationsTable.eventId] = eventId
+                it[ReservationsTable.zoneId] = zoneId
+                it[ReservationsTable.amount] = 1
+                it[ReservationsTable.status] = status.name
+                it[ReservationsTable.createdAt] = now
+                it[ReservationsTable.updatedAt] = now
+            }
+
+            // reservations.id(PK) 반환 — orderId로 재조회
+            val reservationId =
+                ReservationsTable
+                    .selectAll()
+                    .where { ReservationsTable.orderId eq orderId }
+                    .single()[ReservationsTable.id]
+
+            ReservationFixture(reservationId = reservationId, orderId = orderId)
         }
-
-        // reservations.id(PK) 반환 — orderId로 재조회
-        ReservationsTable
-            .selectAll()
-            .where { ReservationsTable.orderId eq orderId }
-            .single()[ReservationsTable.id]
-    }
 }

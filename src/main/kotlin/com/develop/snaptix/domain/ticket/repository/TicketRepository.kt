@@ -1,10 +1,13 @@
 package com.develop.snaptix.domain.ticket.repository
 
+import com.develop.snaptix.domain.reservation.entity.ReservationsTable
 import com.develop.snaptix.domain.ticket.entity.TicketStatus
 import com.develop.snaptix.domain.ticket.entity.TicketsTable
+import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.stereotype.Repository
@@ -23,7 +26,32 @@ data class TicketRecord(
 )
 
 @Repository
-class TicketRepository {
+class TicketRepository : TicketQuery {
+    // ── TicketQuery 구현 (PR-13) ──────────────────────────────────────────
+
+    /**
+     * orderId(reservations.order_id) → ticket_code 조회 (Story 10.1-B).
+     *
+     * `GET /orders/{orderId}` 폴링에서 CONFIRMED 상태 응답에 ticketCode를 동봉하기 위해 사용한다.
+     * reservations ─INNER JOIN─ tickets 단일 쿼리로 처리한다.
+     *
+     * @return 발급된 ticketCode, 미발급이거나 조회 실패 시 null
+     */
+    override fun findTicketCodeByOrderId(orderId: String): String? = transaction {
+        ReservationsTable
+            .join(
+                otherTable = TicketsTable,
+                joinType = JoinType.INNER,
+                onColumn = ReservationsTable.id,
+                otherColumn = TicketsTable.reservationId,
+            ).select(TicketsTable.ticketCode)
+            .where { ReservationsTable.orderId eq orderId }
+            .singleOrNull()
+            ?.get(TicketsTable.ticketCode)
+    }
+
+    // ── 기존 메서드 ────────────────────────────────────────────────────────
+
     /** 현장 QR의 ticketCode(UUID)로 티켓을 조회한다(검표 기준). */
     fun findByTicketCode(ticketCode: String): TicketRecord? = transaction {
         TicketsTable
