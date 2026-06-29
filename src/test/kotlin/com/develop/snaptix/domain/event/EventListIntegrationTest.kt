@@ -5,6 +5,8 @@ import com.develop.snaptix.domain.event.entity.EventsTable
 import com.develop.snaptix.domain.zone.entity.ZonesTable
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.support.IntegrationTestSupport
+import org.hamcrest.Matchers.matchesPattern
+import org.hamcrest.Matchers.not
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -17,6 +19,8 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import java.time.Instant
 import java.util.UUID
+
+private const val UUID_REGEX = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -52,11 +56,16 @@ class EventListIntegrationTest(
             .get("/api/v1/events")
             .andExpect {
                 status { isOk() }
+                jsonPath("$.content") { exists() }
+                jsonPath("$.pageable") { exists() }
                 jsonPath("$.content.length()") { value(1) }
                 jsonPath("$.content[0].eventId") { value(onSale.publicId) }
+                jsonPath("$.content[0].eventId") { value(matchesPattern(UUID_REGEX)) }
+                jsonPath("$.content[0].eventId") { value(not(onSale.id.toString())) }
                 jsonPath("$.content[0].name") { value("2027 SnapTix Seoul") }
                 jsonPath("$.content[0].location") { value("서울 KSPO DOME") }
                 jsonPath("$.content[0].startTime") { value("2027-12-25T19:00:00+09:00") }
+                jsonPath("$.content[0].posterUrl") { value("https://cdn.snaptix.kr/events/test.jpg") }
                 jsonPath("$.content[0].status") { value("ON_SALE") }
                 jsonPath("$.content[0].minPrice") { value(90_000) }
                 jsonPath("$.content[0].isSoldOut") { value(false) }
@@ -260,7 +269,7 @@ class EventListIntegrationTest(
                 redisTemplate.opsForValue().set("ZONE:$zoneId:stock", stock.toString())
             }
 
-            CreatedEvent(publicId = eventPublicId)
+            CreatedEvent(id = eventId, publicId = eventPublicId)
         }
     }
 
@@ -269,6 +278,7 @@ class EventListIntegrationTest(
     }
 
     private data class CreatedEvent(
+        val id: Long,
         val publicId: String,
     )
 }
