@@ -42,3 +42,6 @@ out/
 ### Secret ###
 src/main/resources/application-secret.yml
 src/main/resources/application-secret.yaml
+
+# Prometheus secrets
+monitoring/prometheus/secrets/prom_pass

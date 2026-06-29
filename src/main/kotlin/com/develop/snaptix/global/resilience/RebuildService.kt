@@ -51,12 +51,15 @@ class RebuildService(
             reconcileService.reconcileExpired(now) // (a) 만료 PENDING → RELEASED 먼저
             val snapshot = rebuildSnapshotReader.read(now) // 단일 일관 스냅샷
             applySnapshot(snapshot) // (b) event:info → (c+d) stock·claimed
-            notifyCompleted(snapshot, startedAt = now)
-            rebuildMetrics.recordCompleted( // ← 추가
+
+            // 재구축 작업 성공 → 알림 이전에 측정/기록(알림 레이턴시·실패와 분리)
+            rebuildMetrics.recordCompleted(
                 events = snapshot.events.size,
                 zones = snapshot.events.sumOf { it.zones.size },
                 durationNanos = System.nanoTime() - startNanos,
             )
+
+            notifyCompleted(snapshot, startedAt = now) // best-effort: 실패해도 성공 판정 불변
         } catch (e: Exception) {
             rebuildMetrics.recordFailed(System.nanoTime() - startNanos)
             alertService.notify(
@@ -86,22 +89,27 @@ class RebuildService(
         }
     }
 
-    private fun notifyCompleted(
-        snapshot: RebuildSnapshot,
-        startedAt: Instant,
-    ) {
-        val durationMs = Duration.between(startedAt, Instant.now(clock)).toMillis()
-        val zoneCount = snapshot.events.sumOf { it.zones.size }
-        alertService.notify(
-            AlertContext(
-                trigger = AlertTrigger.REBUILD_COMPLETED,
-                fields =
-                    mapOf(
-                        "events" to snapshot.events.size,
-                        "zones" to zoneCount,
-                        "durationMs" to durationMs,
-                    ),
-            ),
-        )
+    @Suppress("TooGenericExceptionCaught") // 완료 알림은 best-effort — 재구축 성공 판정에 영향 금지
+    private fun notifyCompleted(snapshot: RebuildSnapshot, startedAt: Instant) {
+        try {
+            val durationMs = Duration.between(startedAt, Instant.now(clock)).toMillis()
+            val zoneCount = snapshot.events.sumOf { it.zones.size }
+            alertService.notify(
+                AlertContext(
+                    trigger = AlertTrigger.REBUILD_COMPLETED,
+                    fields =
+                        mapOf(
+                            "events" to snapshot.events.size,
+                            "zones" to zoneCount,
+                            "durationMs" to durationMs,
+                        ),
+                ),
+            )
+        } catch (e: Exception) {
+            logger.atWarn {
+                message = "Rebuild completion notify failed (rebuild itself succeeded)"
+                cause = e
+            }
+        }
     }
 }
