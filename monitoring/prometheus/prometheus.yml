@@ -13,18 +13,14 @@ scrape_configs:
             labels:
                 instance: 'local-app'
 
-    # ─────────────────────────────────────────────────────────────
-    # (PR-D) 부하테스트용 운영 scrape — A 레코드 + NPM(Basic Auth + HTTPS + 경로 제한) 준비 후 활성화.
-    # 명세서 §7.4 / §7.6 참고. 시크릿(PROM_USER/PROM_PASS)은 환경변수로 주입.
-    #
-    # - job_name: 'snaptix-prod'
-    #   scheme: https
-    #   metrics_path: /actuator/prometheus
-    #   basic_auth:
-    #     username: ${PROM_USER}
-    #     password: ${PROM_PASS}
-    #   static_configs:
-    #     - targets: ['<metrics-host>']      # 전용 A 레코드(직접 등록)
-    #       labels:
-    #         instance: 'prod-app'
-    # ─────────────────────────────────────────────────────────────
+    - job_name: 'snaptix-prod'
+      scheme: https
+      metrics_path: /actuator/prometheus
+      basic_auth:
+           username: snaptix-metrics                        # 리터럴(비밀 아님, NPM 자격과 동일)
+           password_file: /etc/prometheus/secrets/prom_pass # ← 비밀번호는 파일로
+      static_configs:
+          - targets: ['metrics58546.example-test-domain11.shop']               # 호스트명(비밀 아님)
+            labels:
+                instance: 'prod-app'
+
