@@ -1,0 +1,12 @@
+# 배치 경로: monitoring/grafana/provisioning/datasources/datasource.yml
+
+apiVersion: 1
+
+datasources:
+    - name: Prometheus
+      uid: prometheus          # 대시보드 JSON 이 이 uid 로 참조한다
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true

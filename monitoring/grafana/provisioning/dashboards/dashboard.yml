@@ -1,0 +1,15 @@
+# 배치 경로: monitoring/grafana/provisioning/dashboards/dashboard.yml
+
+apiVersion: 1
+
+providers:
+    - name: 'snaptix'
+      orgId: 1
+      folder: 'SnapTix'
+      type: file
+      disableDeletion: false
+      editable: true
+      allowUiUpdates: true
+      options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: false

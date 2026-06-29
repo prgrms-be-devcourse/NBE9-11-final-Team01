@@ -1,0 +1,116 @@
+{
+    "annotations": { "list": [] },
+    "editable": true,
+    "graphTooltip": 0,
+    "schemaVersion": 39,
+    "tags": ["snaptix", "resilience"],
+    "templating": { "list": [] },
+    "time": { "from": "now-6h", "to": "now" },
+    "timezone": "browser",
+    "title": "SnapTix Resilience",
+    "uid": "snaptix-resilience",
+    "version": 1,
+    "panels": [
+        {
+            "id": 1,
+            "type": "timeseries",
+            "title": "Reconcile 처리율 (rate/s)",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+            "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+            "targets": [
+                { "refId": "A", "expr": "sum(rate(snaptix_reconcile_released_total[5m]))", "legendFormat": "released" },
+                { "refId": "B", "expr": "sum(rate(snaptix_reconcile_compensated_total[5m]))", "legendFormat": "compensated" },
+                { "refId": "C", "expr": "sum(rate(snaptix_reconcile_failed_total[5m]))", "legendFormat": "failed" }
+            ]
+        },
+        {
+            "id": 2,
+            "type": "timeseries",
+            "title": "Drift 처리율 (rate/s)",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+            "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+            "targets": [
+                { "refId": "A", "expr": "rate(snaptix_drift_fixed_total[5m])", "legendFormat": "fixed" },
+                { "refId": "B", "expr": "rate(snaptix_drift_oversell_total[5m])", "legendFormat": "oversell" },
+                { "refId": "C", "expr": "rate(snaptix_drift_failed_total[5m])", "legendFormat": "failed" },
+                { "refId": "D", "expr": "rate(snaptix_drift_skipped_total[5m])", "legendFormat": "skipped" }
+            ]
+        },
+        {
+            "id": 3,
+            "type": "timeseries",
+            "title": "잡 실행시간 max (seconds)",
+            "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0 } }, "overrides": [] },
+            "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+            "targets": [
+                { "refId": "A", "expr": "snaptix_reconcile_duration_seconds_max", "legendFormat": "reconcile ({{trigger}})" },
+                { "refId": "B", "expr": "snaptix_drift_duration_seconds_max", "legendFormat": "drift" },
+                { "refId": "C", "expr": "snaptix_rebuild_duration_seconds_max", "legendFormat": "rebuild" },
+                { "refId": "D", "expr": "snaptix_eventkey_cleanup_duration_seconds_max", "legendFormat": "cleanup" }
+            ]
+        },
+        {
+            "id": 4,
+            "type": "timeseries",
+            "title": "Cleanup / OrderStreamTrim 처리율 (rate/s)",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } }, "overrides": [] },
+            "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+            "targets": [
+                { "refId": "A", "expr": "rate(snaptix_eventkey_cleanup_cleaned_total[5m])", "legendFormat": "cleanup.cleaned" },
+                { "refId": "B", "expr": "rate(snaptix_eventkey_cleanup_failed_total[5m])", "legendFormat": "cleanup.failed" },
+                { "refId": "C", "expr": "rate(snaptix_order_stream_trimmed_total[5m])", "legendFormat": "stream.trimmed" }
+            ]
+        },
+        {
+            "id": 5,
+            "type": "stat",
+            "title": "Read-Only 모드",
+            "gridPos": { "h": 8, "w": 6, "x": 0, "y": 16 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": {
+                "defaults": {
+                    "mappings": [
+                        { "type": "value", "options": { "0": { "text": "OFF", "color": "green" }, "1": { "text": "ON", "color": "red" } } }
+                    ]
+                },
+                "overrides": []
+            },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+            "targets": [
+                { "refId": "A", "expr": "max(snaptix_readonly_mode)", "legendFormat": "readonly" }
+            ]
+        },
+        {
+            "id": 6,
+            "type": "stat",
+            "title": "Rebuild outcomes (누적)",
+            "gridPos": { "h": 8, "w": 6, "x": 6, "y": 16 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": {}, "overrides": [] },
+            "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" },
+            "targets": [
+                { "refId": "A", "expr": "snaptix_rebuild_total", "legendFormat": "{{outcome}}" }
+            ]
+        },
+        {
+            "id": 7,
+            "type": "timeseries",
+            "title": "Redis 서킷 브레이커 상태",
+            "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 20, "stepInterval": true } }, "overrides": [] },
+            "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+            "targets": [
+                { "refId": "A", "expr": "resilience4j_circuitbreaker_state{name=\"redis\"}", "legendFormat": "{{state}}" }
+            ]
+        }
+    ]
+}
