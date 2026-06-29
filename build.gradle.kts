@@ -98,6 +98,9 @@ dependencies {
     implementation("io.github.oshai:kotlin-logging-jvm:8.0.4")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 
+    // Observability — Prometheus (Story 14.1 / #14)
+    implementation("io.micrometer:micrometer-registry-prometheus")
+
     // OpenAPI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0")
 

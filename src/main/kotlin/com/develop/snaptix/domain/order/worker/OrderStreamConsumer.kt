@@ -2,8 +2,11 @@ package com.develop.snaptix.domain.order.worker
 
 import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
+import com.develop.snaptix.domain.order.observability.OrderMdc
+import com.develop.snaptix.domain.order.observability.OrderMetrics
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.SmartLifecycle
 import org.springframework.context.event.ContextClosedEvent
@@ -21,6 +24,7 @@ class OrderStreamConsumer(
     private val orderProcessor: OrderProcessor,
     private val activeEventDiscoveryPort: ActiveEventDiscoveryPort,
     private val orderStreamProperties: OrderStreamProperties,
+    private val meterRegistry: MeterRegistry,
 ) : SmartLifecycle {
     private val log = KotlinLogging.logger {}
     private val running = AtomicBoolean(false)
@@ -61,7 +65,6 @@ class OrderStreamConsumer(
         running.set(false)
         workerThread?.let { thread ->
             thread.interrupt()
-            // workerThread 내부에서 stop()이 호출되는 경우(테스트 mock 등) self-join 방지
             if (thread != Thread.currentThread()) {
                 thread.join(SHUTDOWN_TIMEOUT_MS)
             }
@@ -78,11 +81,6 @@ class OrderStreamConsumer(
 
     @EventListener(ContextClosedEvent::class)
     fun onContextClosed() {
-        // ContextClosedEvent는 SmartLifecycle 처리 이전에 발행됨.
-        // interrupt() 후 join()으로 스레드 완전 종료를 대기해야
-        // Lettuce SmartLifecycle stop 시점에 워커가 Redis I/O를 하지 않음.
-        // join() 없이 interrupt()만 하면 스레드가 아직 실행 중인 채로
-        // Lettuce event loop가 종료되어 RejectedExecutionException + OOM이 발생함.
         running.set(false)
         workerThread?.let { thread ->
             thread.interrupt()
@@ -95,7 +93,6 @@ class OrderStreamConsumer(
 
     // ── Consumer Loop ───────────────────────────────────────────────
 
-    // [Fix] CyclomaticComplexMethod: 루프 본문을 runOneCycle()로 추출하여 복잡도 감소
     fun consumeLoop() {
         log.info { "Started OrderStreamConsumer [consumerId=$consumerId]" }
         while (running.get()) {
@@ -139,7 +136,7 @@ class OrderStreamConsumer(
     }
 
     private fun sleepWithBackoff() {
-        if (!running.get()) return // shutdown 중이면 재시도 불필요
+        if (!running.get()) return
         try {
             Thread.sleep(ERROR_BACKOFF_MS)
         } catch (ie: InterruptedException) {
@@ -149,17 +146,81 @@ class OrderStreamConsumer(
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // 비터미널 에러 포착을 위해 의도적으로 최상위 런타임 예외를 캐치함
-    private fun processSingleMessage(eventId: UUID, messageId: String, payload: Map<String, String>) {
+    /**
+     * 메시지 단위 처리.
+     *
+     * MDC 에 메시지의 userId/eventId/zoneId 를 주입하여 하위 처리 로그 전반에
+     * 구조화 필드가 자동 포함되도록 한다. 처리 완료 후 반드시 MDC 를 정리한다.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun processSingleMessage(
+        eventId: UUID,
+        messageId: String,
+        payload: Map<String, String>,
+    ) {
         try {
             val orderMessage = OrderMessage.fromStreamPayload(payload)
+
+            // MDC 컨텍스트 — 이 메시지 처리 전반의 구조화 로그에 자동 포함
+            OrderMdc.set(
+                userId = orderMessage.userId,
+                eventId = orderMessage.eventId,
+                zoneId = orderMessage.zoneId,
+            )
+
+            log.atInfo {
+                message = "XREADGROUP message received"
+                this.payload =
+                    mapOf(
+                        "action" to "XREADGROUP",
+                        "result" to "RECEIVED",
+                        "messageId" to messageId,
+                        "orderId" to orderMessage.orderId,
+                    )
+            }
+
             orderProcessor.process(orderMessage)
+
             orderStreamGateway.ack(eventId, orderStreamProperties.consumerGroup, messageId)
+
+            // §9 메트릭: 정상 ACK 건수
+            meterRegistry.counter(OrderMetrics.XACK_COUNT).increment()
+
+            log.atInfo {
+                message = "XACK completed"
+                this.payload =
+                    mapOf(
+                        "action" to "XACK",
+                        "result" to "SUCCESS",
+                        "messageId" to messageId,
+                        "orderId" to orderMessage.orderId,
+                    )
+            }
         } catch (e: IllegalArgumentException) {
-            log.error(e) { "[TERMINAL_ERROR] Invalid payload format. messageId=$messageId" }
+            log.atError {
+                message = "Terminal error — invalid payload, ACK to remove from PEL"
+                cause = e
+                this.payload =
+                    mapOf(
+                        "action" to "XREADGROUP",
+                        "result" to "TERMINAL_ERROR",
+                        "messageId" to messageId,
+                    )
+            }
             orderStreamGateway.ack(eventId, orderStreamProperties.consumerGroup, messageId)
         } catch (e: RuntimeException) {
-            log.warn(e) { "[NON_TERMINAL_ERROR] Processing failed. Left in PEL. messageId=$messageId" }
+            log.atWarn {
+                message = "Non-terminal error — left in PEL for reclaim"
+                cause = e
+                this.payload =
+                    mapOf(
+                        "action" to "XREADGROUP",
+                        "result" to "NON_TERMINAL_ERROR",
+                        "messageId" to messageId,
+                    )
+            }
+        } finally {
+            OrderMdc.clearOrderContext()
         }
     }
 
