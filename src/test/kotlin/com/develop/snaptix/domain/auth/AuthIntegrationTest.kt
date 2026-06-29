@@ -68,6 +68,7 @@ class AuthIntegrationTest(
                     content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
                 }.andExpect {
                     status { isOk() }
+                    jsonPath("$.userId") { exists() }
                     jsonPath("$.role") { value("USER") }
                     jsonPath("$.accessToken") { doesNotExist() }
                     jsonPath("$.refreshToken") { doesNotExist() }
@@ -76,10 +77,22 @@ class AuthIntegrationTest(
         val loginCookies = loginResult.response.getHeaders(HttpHeaders.SET_COOKIE)
         assertThat(loginCookies).hasSize(2)
         assertThat(loginCookies).anySatisfy {
-            assertThat(it).contains("accessToken=").contains("HttpOnly")
+            assertThat(it)
+                .contains("accessToken=")
+                .contains("Path=/")
+                .contains("Max-Age=600")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
         }
         assertThat(loginCookies).anySatisfy {
-            assertThat(it).contains("refreshToken=").contains("HttpOnly")
+            assertThat(it)
+                .contains("refreshToken=")
+                .contains("Path=/api/v1/auth/refresh")
+                .contains("Max-Age=604800")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
         }
 
         val logoutResult =
@@ -205,14 +218,37 @@ class AuthIntegrationTest(
     }
 
     @Test
-    fun `로그인 인증 실패 시 401을 반환한다`() {
+    fun `로그인 비밀번호가 일치하지 않으면 401을 반환한다`() {
+        mockMvc
+            .post("/api/v1/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
+            }.andExpect {
+                status { isCreated() }
+            }
+
         mockMvc
             .post("/api/v1/auth/login") {
                 contentType = MediaType.APPLICATION_JSON
-                content = """{"email":"missing@example.com","password":"$TEST_PASSWORD"}"""
+                content = """{"email":"$TEST_EMAIL","password":"WrongPass123!"}"""
             }.andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value(ErrorCode.INVALID_LOGIN_CREDENTIALS.code) }
+                jsonPath("$.message") { value(ErrorCode.INVALID_LOGIN_CREDENTIALS.message) }
+                jsonPath("$.errors") { value(null) }
+            }
+    }
+
+    @Test
+    fun `로그인 이메일 형식이 올바르지 않으면 400을 반환한다`() {
+        mockMvc
+            .post("/api/v1/auth/login") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"invalid-email","password":"$TEST_PASSWORD"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+                jsonPath("$.errors[0].field") { value("email") }
             }
     }
 
