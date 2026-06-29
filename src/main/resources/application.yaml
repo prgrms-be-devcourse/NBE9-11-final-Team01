@@ -95,7 +95,7 @@ custom:
     domain: "${custom.dev.domain}"
     backUrl: "${custom.dev.backUrl}"
     frontUrl: "${custom.dev.frontUrl}"
-    
+
 realtime:
   sse:
     timeout: 8m
