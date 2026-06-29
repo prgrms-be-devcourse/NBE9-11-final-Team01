@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.event.scheduler
 
 import com.develop.snaptix.domain.event.service.EventKeyCleanupService
+import com.develop.snaptix.global.observability.CleanupMetrics
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -16,10 +17,13 @@ import java.time.Instant
 @Component
 class EventKeyCleanupScheduler(
     private val eventKeyCleanupService: EventKeyCleanupService,
+    private val cleanupMetrics: CleanupMetrics,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
     @Scheduled(cron = "\${event.cleanup.cron}")
     fun sweep() {
-        eventKeyCleanupService.sweep(Instant.now(clock))
+        val start = System.nanoTime()
+        val report = eventKeyCleanupService.sweep(Instant.now(clock))
+        cleanupMetrics.record(report, System.nanoTime() - start)
     }
 }
