@@ -27,7 +27,7 @@ class OrderController(
 ) {
     @PostMapping
     fun createOrder(
-        @AuthenticationPrincipal(expression = "#this") userId: Long?,
+        @AuthenticationPrincipal(expression = "userId") userId: Long?,
         @Validated @RequestBody request: OrderRequest,
         httpRequest: HttpServletRequest,
     ): ResponseEntity<OrderAcceptedResponse> {
@@ -53,7 +53,7 @@ class OrderController(
      */
     @GetMapping("/{orderId}")
     fun getOrderStatus(
-        @AuthenticationPrincipal(expression = "#this") userId: Long?,
+        @AuthenticationPrincipal(expression = "userId") userId: Long?,
         @PathVariable orderId: String,
     ): ResponseEntity<OrderStatusResponse> {
         val validUserId = userId ?: throw BusinessException(ErrorCode.TOKEN_MISSING)
