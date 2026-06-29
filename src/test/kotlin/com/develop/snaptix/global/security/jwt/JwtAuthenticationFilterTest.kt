@@ -13,6 +13,9 @@ import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
 import tools.jackson.databind.ObjectMapper
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 private const val FILTER_TEST_SECRET = "test-secret-key-for-snaptix-jwt-filter-256-bit"
 
@@ -25,11 +28,7 @@ class JwtAuthenticationFilterTest {
         }
 
     private val jwtProvider = JwtProvider(jwtProperties)
-    private val filter =
-        JwtAuthenticationFilter(
-            jwtProvider,
-            SecurityErrorResponseWriter(ObjectMapper()),
-        )
+    private val filter = filterWith(jwtProvider)
 
     @AfterEach
     fun tearDown() {
@@ -86,4 +85,39 @@ class JwtAuthenticationFilterTest {
         assertThat(response.status).isEqualTo(ErrorCode.TOKEN_INVALID.status.value())
         assertThat(response.contentAsString).contains(ErrorCode.TOKEN_INVALID.code)
     }
+
+    @Test
+    fun `accessToken cookie가 만료되면 TOKEN_EXPIRED 응답을 반환한다`() {
+        val issuedAt = Instant.parse("2026-06-15T00:00:00Z")
+        val expiredToken =
+            JwtProvider(
+                jwtProperties = jwtProperties,
+                clock = Clock.fixed(issuedAt, ZoneOffset.UTC),
+            ).createAccessToken(
+                userId = 1L,
+                role = UserRole.USER,
+            )
+        val expiredJwtProvider =
+            JwtProvider(
+                jwtProperties = jwtProperties,
+                clock =
+                    Clock.fixed(
+                        issuedAt.plusSeconds(jwtProperties.accessTokenExpirationSeconds + 1),
+                        ZoneOffset.UTC,
+                    ),
+            )
+        val request = MockHttpServletRequest().apply { setCookies(Cookie("accessToken", expiredToken)) }
+        val response = MockHttpServletResponse()
+
+        filterWith(expiredJwtProvider).doFilter(request, response, MockFilterChain())
+
+        assertThat(SecurityContextHolder.getContext().authentication).isNull()
+        assertThat(response.status).isEqualTo(ErrorCode.TOKEN_EXPIRED.status.value())
+        assertThat(response.contentAsString).contains(ErrorCode.TOKEN_EXPIRED.code)
+    }
+
+    private fun filterWith(jwtProvider: JwtProvider): JwtAuthenticationFilter = JwtAuthenticationFilter(
+        jwtProvider,
+        SecurityErrorResponseWriter(ObjectMapper()),
+    )
 }

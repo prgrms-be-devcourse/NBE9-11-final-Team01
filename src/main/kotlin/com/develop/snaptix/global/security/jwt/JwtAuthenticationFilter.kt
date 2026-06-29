@@ -28,12 +28,20 @@ class JwtAuthenticationFilter(
         val accessToken = request.extractAccessToken()
 
         if (accessToken != null) {
-            if (!jwtProvider.isValid(accessToken)) {
-                securityErrorResponseWriter.write(response, ErrorCode.TOKEN_INVALID)
-                return
-            }
+            when (jwtProvider.validate(accessToken)) {
+                JwtValidationStatus.VALID ->
+                    SecurityContextHolder.getContext().authentication = createAuthentication(accessToken)
 
-            SecurityContextHolder.getContext().authentication = createAuthentication(accessToken)
+                JwtValidationStatus.EXPIRED -> {
+                    securityErrorResponseWriter.write(response, ErrorCode.TOKEN_EXPIRED)
+                    return
+                }
+
+                JwtValidationStatus.INVALID -> {
+                    securityErrorResponseWriter.write(response, ErrorCode.TOKEN_INVALID)
+                    return
+                }
+            }
         }
 
         filterChain.doFilter(request, response)

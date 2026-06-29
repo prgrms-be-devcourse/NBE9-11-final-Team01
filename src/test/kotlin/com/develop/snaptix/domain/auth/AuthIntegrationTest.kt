@@ -1,7 +1,10 @@
 package com.develop.snaptix.domain.auth
 
+import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.domain.user.entity.UsersTable
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.security.jwt.JwtProperties
+import com.develop.snaptix.global.security.jwt.JwtProvider
 import com.develop.snaptix.support.IntegrationTestSupport
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
@@ -21,6 +24,9 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 private const val TEST_EMAIL = "integration-login@example.com"
 private const val TEST_PASSWORD = "SecurePass123!"
@@ -30,6 +36,7 @@ private const val PROTECTED_RESPONSE = "authenticated"
 @AutoConfigureMockMvc
 class AuthIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
+    @Autowired private val jwtProperties: JwtProperties,
 ) : IntegrationTestSupport() {
     @TestConfiguration
     class TestProtectedControllerConfig {
@@ -194,6 +201,19 @@ class AuthIntegrationTest(
     }
 
     @Test
+    fun `만료된 accessToken 쿠키로 인증 필요한 API 접근 시 401을 반환한다`() {
+        mockMvc
+            .get("/api/v1/auth-test/protected") {
+                cookie(Cookie("accessToken", expiredAccessToken()))
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.TOKEN_EXPIRED.code) }
+                jsonPath("$.message") { value(ErrorCode.TOKEN_EXPIRED.message) }
+                jsonPath("$.errors") { value(null) }
+            }
+    }
+
+    @Test
     fun `회원가입 이메일 형식이 올바르지 않으면 400을 반환한다`() {
         mockMvc
             .post("/api/v1/auth/signup") {
@@ -287,5 +307,13 @@ class AuthIntegrationTest(
                 .substringBefore(";")
 
         return Cookie(name, value)
+    }
+
+    private fun expiredAccessToken(): String {
+        val issuedAt = Instant.now().minusSeconds(jwtProperties.accessTokenExpirationSeconds + 1)
+        return JwtProvider(
+            jwtProperties = jwtProperties,
+            clock = Clock.fixed(issuedAt, ZoneOffset.UTC),
+        ).createAccessToken(userId = 1L, role = UserRole.USER)
     }
 }
