@@ -170,10 +170,14 @@ class OrderLoggingAspectTest {
         override fun doWithoutAnnotation(): String = "NO_ANNOTATION"
     }
 
-    /** 테스트 전용 비터미널 예외 — BusinessException 이 아닌 ERROR 경로 검증용 */
+    /**
+     * 테스트 전용 비터미널 예외 — BusinessException 이 아닌 ERROR 경로 검증용.
+     * RuntimeException 상속: JDK 동적 프록시는 인터페이스에 선언되지 않은
+     * checked exception을 UndeclaredThrowableException으로 래핑하므로 unchecked로 정의한다.
+     */
     class TestProcessingException(
         message: String,
-    ) : Exception(message)
+    ) : RuntimeException(message)
 
     /** 어노테이션 없는 메서드 실패 케이스 */
     open class NoAnnotationFailingServiceImpl : FakeService {
