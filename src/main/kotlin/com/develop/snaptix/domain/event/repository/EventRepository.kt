@@ -18,6 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.util.UUID
 
 data class EventRecord(
     val id: Long,
@@ -234,6 +235,13 @@ class EventRepository {
             zones = zones,
             totalElements = totalElements,
         )
+    }
+
+    fun findActiveEventPublicIds(): List<UUID> = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.status eq EventStatus.ON_SALE.name }
+            .mapNotNull { runCatching { UUID.fromString(it[EventsTable.publicId]) }.getOrNull() }
     }
 
     private fun publicEventWhere(condition: EventListSearchCondition): Op<Boolean> {
