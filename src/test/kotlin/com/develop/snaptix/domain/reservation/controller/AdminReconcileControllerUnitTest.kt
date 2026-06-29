@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.reservation.controller
 
 import com.develop.snaptix.domain.reservation.service.ReconcileReport
 import com.develop.snaptix.domain.reservation.service.ReconcileService
+import com.develop.snaptix.global.observability.ReconcileMetrics
 import com.develop.snaptix.global.security.auth.CurrentUserProvider
 import io.mockk.every
 import io.mockk.mockk
@@ -15,8 +16,9 @@ import kotlin.test.Test
 class AdminReconcileControllerUnitTest {
     private val reconcileService = mockk<ReconcileService>(relaxed = true)
     private val currentUserProvider = mockk<CurrentUserProvider>()
+    private val reconcileMetrics = mockk<ReconcileMetrics>(relaxed = true)
     private val clock = Clock.fixed(Instant.parse("2026-06-22T00:00:00Z"), ZoneOffset.UTC)
-    private val controller = AdminReconcileController(reconcileService, currentUserProvider, clock)
+    private val controller = AdminReconcileController(reconcileService, currentUserProvider, reconcileMetrics, clock)
 
     @Test
     fun `reconcile은 정산 결과를 200으로 반환하고 ADMIN 감사기록을 위임한다`() {

@@ -9,7 +9,7 @@ import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
-import com.develop.snaptix.global.resilience.ReadOnlyModeHolder
+import com.develop.snaptix.global.observability.RebuildMetrics
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -28,6 +28,7 @@ import java.time.ZoneOffset
 class RebuildServiceUnitTest {
     private val reconcileService = mockk<ReconcileService>()
     private val snapshotReader = mockk<RebuildSnapshotReader>()
+    private val rebuildMetrics = mockk<RebuildMetrics>(relaxUnitFun = true)
     private val writer = mockk<RebuildRedisWriter>(relaxUnitFun = true)
     private val coordinator = mockk<RebuildCoordinator>(relaxUnitFun = true)
     private val readOnly = mockk<ReadOnlyModeHolder>(relaxUnitFun = true)
@@ -37,7 +38,16 @@ class RebuildServiceUnitTest {
     private val clock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
 
     private val service =
-        RebuildService(reconcileService, snapshotReader, writer, coordinator, readOnly, alertService, clock)
+        RebuildService(
+            reconcileService,
+            snapshotReader,
+            writer,
+            coordinator,
+            readOnly,
+            rebuildMetrics,
+            alertService,
+            clock,
+        )
 
     private fun snapshotOf(): RebuildSnapshot {
         val event = mockk<EventDetail>()

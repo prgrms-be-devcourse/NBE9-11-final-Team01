@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.reservation.controller
 
 import com.develop.snaptix.domain.reservation.service.ReconcileReport
 import com.develop.snaptix.domain.reservation.service.ReconcileService
+import com.develop.snaptix.global.observability.ReconcileMetrics
 import com.develop.snaptix.global.security.auth.CurrentUserProvider
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.ResponseEntity
@@ -23,13 +24,16 @@ import java.time.Instant
 class AdminReconcileController(
     private val reconcileService: ReconcileService,
     private val currentUserProvider: CurrentUserProvider,
+    private val reconcileMetrics: ReconcileMetrics,
     @Qualifier("alertClock")private val clock: Clock,
 ) {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     fun reconcile(): ResponseEntity<ReconcileReport> {
         val actorId = currentUserProvider.getCurrentUserId()
+        val start = System.nanoTime()
         val report = reconcileService.reconcileExpired(Instant.now(clock))
+        reconcileMetrics.record(report, System.nanoTime() - start, ReconcileMetrics.Trigger.ADMIN)
 
         reconcileService.writeAdminAudit(actorId, report)
         return ResponseEntity.ok(report)
