@@ -52,11 +52,11 @@ class JwtProvider(
     fun validate(token: String): JwtValidationStatus = try {
         parseClaims(token)
         JwtValidationStatus.VALID
-    } catch (exception: ExpiredJwtException) {
+    } catch (_: ExpiredJwtException) {
         JwtValidationStatus.EXPIRED
-    } catch (exception: JwtException) {
+    } catch (_: JwtException) {
         JwtValidationStatus.INVALID
-    } catch (exception: IllegalArgumentException) {
+    } catch (_: IllegalArgumentException) {
         JwtValidationStatus.INVALID
     }
 

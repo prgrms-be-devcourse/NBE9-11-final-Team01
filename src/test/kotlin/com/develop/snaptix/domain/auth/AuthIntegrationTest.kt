@@ -59,89 +59,14 @@ class AuthIntegrationTest(
 
     @Test
     fun `회원가입 후 로그인하면 JWT 쿠키가 발급되고 로그아웃 시 쿠키가 만료된다`() {
-        mockMvc
-            .post("/api/v1/auth/signup") {
-                contentType = MediaType.APPLICATION_JSON
-                content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
-            }.andExpect {
-                status { isCreated() }
-                jsonPath("$.email") { value(TEST_EMAIL) }
-            }
+        signUpTestUser()
 
-        val loginResult =
-            mockMvc
-                .post("/api/v1/auth/login") {
-                    contentType = MediaType.APPLICATION_JSON
-                    content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
-                }.andExpect {
-                    status { isOk() }
-                    jsonPath("$.userId") { exists() }
-                    jsonPath("$.role") { value("USER") }
-                    jsonPath("$.accessToken") { doesNotExist() }
-                    jsonPath("$.refreshToken") { doesNotExist() }
-                }.andReturn()
+        val loginCookies = loginTestUser()
+        assertLoginCookies(loginCookies)
 
-        val loginCookies = loginResult.response.getHeaders(HttpHeaders.SET_COOKIE)
-        assertThat(loginCookies).hasSize(2)
-        assertThat(loginCookies).anySatisfy {
-            assertThat(it)
-                .contains("accessToken=")
-                .contains("Path=/")
-                .contains("Max-Age=600")
-                .contains("Secure")
-                .contains("HttpOnly")
-                .contains("SameSite=Strict")
-        }
-        assertThat(loginCookies).anySatisfy {
-            assertThat(it)
-                .contains("refreshToken=")
-                .contains("Path=/api/v1/auth/refresh")
-                .contains("Max-Age=604800")
-                .contains("Secure")
-                .contains("HttpOnly")
-                .contains("SameSite=Strict")
-        }
-
-        val logoutResult =
-            mockMvc
-                .post("/api/v1/auth/logout") {
-                    cookie(loginCookies.toRequestCookie("accessToken"))
-                    cookie(loginCookies.toRequestCookie("refreshToken"))
-                }.andExpect {
-                    status { isOk() }
-                    jsonPath("$.message") { value("로그아웃이 성공적으로 처리되었습니다.") }
-                }.andReturn()
-
-        val logoutCookies = logoutResult.response.getHeaders(HttpHeaders.SET_COOKIE)
-        assertThat(logoutCookies).hasSize(2)
-        assertThat(logoutCookies).anySatisfy {
-            assertThat(it)
-                .contains("accessToken=")
-                .contains("Path=/")
-                .contains("Max-Age=0")
-                .contains("Secure")
-                .contains("HttpOnly")
-                .contains("SameSite=Strict")
-        }
-        assertThat(logoutCookies).anySatisfy {
-            assertThat(it)
-                .contains("refreshToken=")
-                .contains("Path=/api/v1/auth/refresh")
-                .contains("Max-Age=0")
-                .contains("Secure")
-                .contains("HttpOnly")
-                .contains("SameSite=Strict")
-        }
-
-        mockMvc
-            .get("/api/v1/auth-test/protected") {
-                cookie(logoutCookies.toRequestCookie("accessToken"))
-            }.andExpect {
-                status { isUnauthorized() }
-                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
-                jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
-                jsonPath("$.errors") { value(null) }
-            }
+        val logoutCookies = logoutWith(loginCookies)
+        assertLogoutCookies(logoutCookies)
+        assertProtectedApiUnauthorized(logoutCookies.toRequestCookie("accessToken"))
     }
 
     @Test
@@ -314,6 +239,104 @@ class AuthIntegrationTest(
         mockMvc
             .post("/api/v1/auth/logout")
             .andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+                jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
+                jsonPath("$.errors") { value(null) }
+            }
+    }
+
+    private fun signUpTestUser() {
+        mockMvc
+            .post("/api/v1/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
+            }.andExpect {
+                status { isCreated() }
+                jsonPath("$.email") { value(TEST_EMAIL) }
+            }
+    }
+
+    private fun loginTestUser(): List<String> {
+        val loginResult =
+            mockMvc
+                .post("/api/v1/auth/login") {
+                    contentType = MediaType.APPLICATION_JSON
+                    content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
+                }.andExpect {
+                    status { isOk() }
+                    jsonPath("$.userId") { exists() }
+                    jsonPath("$.role") { value("USER") }
+                    jsonPath("$.accessToken") { doesNotExist() }
+                    jsonPath("$.refreshToken") { doesNotExist() }
+                }.andReturn()
+
+        return loginResult.response.getHeaders(HttpHeaders.SET_COOKIE)
+    }
+
+    private fun assertLoginCookies(loginCookies: List<String>) {
+        assertThat(loginCookies).hasSize(2)
+        assertThat(loginCookies).anySatisfy {
+            assertThat(it)
+                .contains("accessToken=")
+                .contains("Path=/")
+                .contains("Max-Age=600")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
+        }
+        assertThat(loginCookies).anySatisfy {
+            assertThat(it)
+                .contains("refreshToken=")
+                .contains("Path=/api/v1/auth/refresh")
+                .contains("Max-Age=604800")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
+        }
+    }
+
+    private fun logoutWith(loginCookies: List<String>): List<String> {
+        val logoutResult =
+            mockMvc
+                .post("/api/v1/auth/logout") {
+                    cookie(loginCookies.toRequestCookie("accessToken"))
+                    cookie(loginCookies.toRequestCookie("refreshToken"))
+                }.andExpect {
+                    status { isOk() }
+                    jsonPath("$.message") { value("로그아웃이 성공적으로 처리되었습니다.") }
+                }.andReturn()
+
+        return logoutResult.response.getHeaders(HttpHeaders.SET_COOKIE)
+    }
+
+    private fun assertLogoutCookies(logoutCookies: List<String>) {
+        assertThat(logoutCookies).hasSize(2)
+        assertThat(logoutCookies).anySatisfy {
+            assertThat(it)
+                .contains("accessToken=")
+                .contains("Path=/")
+                .contains("Max-Age=0")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
+        }
+        assertThat(logoutCookies).anySatisfy {
+            assertThat(it)
+                .contains("refreshToken=")
+                .contains("Path=/api/v1/auth/refresh")
+                .contains("Max-Age=0")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
+        }
+    }
+
+    private fun assertProtectedApiUnauthorized(cookie: Cookie) {
+        mockMvc
+            .get("/api/v1/auth-test/protected") {
+                cookie(cookie)
+            }.andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
                 jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
