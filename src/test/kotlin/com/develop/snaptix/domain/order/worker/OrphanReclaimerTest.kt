@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * 7. deletedIds > 0 → deleted.count 메트릭
  * 8. 동시 회수 경합 → process 정확히 1회 (XAUTOCLAIM 원자성)
  * 9. 이벤트 단위 오류 격리 → 다른 이벤트 처리 계속
+ * 10. pendingSize 게이지 — 회수된 메시지 수 반영 (이슈 #14)
  */
 @SpringBootTest
 class OrphanReclaimerTest : IntegrationTestSupport() {
@@ -245,6 +246,39 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         assertThat(deletedCount()).isZero()
     }
 
+    @Test
+    fun `reclaimOrphans 완료 후 pendingSize 게이지가 회수된 메시지 수를 반영한다`() {
+        // given
+        val message = orderMessage()
+        val eventId = message.eventId
+        orderStreamGateway.ensureGroup(eventId, CONSUMER_GROUP)
+        orderStreamGateway.add(message)
+        orderStreamGateway.read(eventId, CONSUMER_GROUP, "dead-consumer", READ_COUNT)
+
+        every { activeEventDiscoveryPort.getActiveEvents() } returns listOf(eventId)
+        every { orderProcessor.process(any()) } just Runs
+
+        Thread.sleep(IDLE_WAIT_MS)
+
+        // when
+        createReclaimer(claimIdleMs = SHORT_IDLE_MS).reclaimOrphans()
+
+        // then: 1개 메시지를 회수했으므로 pendingSize = 1
+        assertThat(pendingSize()).isEqualTo(1.0)
+    }
+
+    @Test
+    fun `활성 이벤트가 없으면 pendingSize 게이지는 0이다`() {
+        // given
+        every { activeEventDiscoveryPort.getActiveEvents() } returns emptyList()
+
+        // when
+        createReclaimer().reclaimOrphans()
+
+        // then: 아무것도 회수하지 않았으므로 pendingSize = 0
+        assertThat(pendingSize()).isZero()
+    }
+
     // ── 이중 처리 방지 ──────────────────────────────────────────────────────────
 
     @Test
@@ -340,6 +374,8 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
     private fun reprocessCount(): Double = meterRegistry.counter("ticketing.order.claim.reprocess.count").count()
 
     private fun deletedCount(): Double = meterRegistry.counter("ticketing.stream.deleted.count").count()
+
+    private fun pendingSize(): Double = meterRegistry.find("ticketing.stream.pending.size").gauge()?.value() ?: 0.0
 
     /** 필수 필드가 없는 잘못된 payload를 스트림에 직접 주입한다. */
     private fun addInvalidPayload(eventId: UUID) {

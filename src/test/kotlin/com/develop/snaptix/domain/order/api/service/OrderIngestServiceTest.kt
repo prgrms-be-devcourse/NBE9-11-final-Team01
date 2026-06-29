@@ -11,6 +11,7 @@ import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitResult
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -37,6 +38,10 @@ class OrderIngestServiceTest {
     private val orderStreamGateway = mockk<OrderStreamGateway>()
     private val ownershipRedisGateway = mockk<OwnershipRedisGateway>()
 
+    // ── 메트릭 ──────────────────────────────────────────────────────────────────
+    // 테스트마다 새 인스턴스 생성 → 카운터 누적 방지
+    private lateinit var meterRegistry: SimpleMeterRegistry
+
     private lateinit var sut: OrderIngestService
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
@@ -51,6 +56,8 @@ class OrderIngestServiceTest {
 
     @BeforeEach
     fun setUp() {
+        meterRegistry = SimpleMeterRegistry()
+
         sut =
             OrderIngestService(
                 orderRateLimiter = orderRateLimiter,
@@ -59,6 +66,7 @@ class OrderIngestServiceTest {
                 idempotencyGateway = idempotencyGateway,
                 orderStreamGateway = orderStreamGateway,
                 ownershipRedisGateway = ownershipRedisGateway,
+                meterRegistry = meterRegistry,
             )
 
         every { onSaleEventInfo.status } returns "ON_SALE"
@@ -102,6 +110,15 @@ class OrderIngestServiceTest {
             assertThat(message.userId).isEqualTo(userId)
             assertThat(message.eventId).isEqualTo(eventPublicId)
             assertThat(message.zoneId).isEqualTo(zoneId)
+        }
+
+        @Test
+        @DisplayName("XADD 성공 시 ticketing.order.queue.size 카운터가 1 증가한다")
+        fun `increments queue size counter on successful XADD`() {
+            sut.ingest(userId, request, ip)
+
+            assertThat(meterRegistry.counter("ticketing.order.queue.size").count())
+                .isEqualTo(1.0)
         }
     }
 
@@ -355,6 +372,14 @@ class OrderIngestServiceTest {
 
             verify(exactly = 1) { idempotencyGateway.compareAndDelete(any(), any(), any()) }
             verify(exactly = 1) { ownershipRedisGateway.delete(any()) }
+        }
+
+        @Test
+        @DisplayName("XADD 실패 시 ticketing.order.queue.size 카운터가 증가하지 않는다")
+        fun `does not increment queue size counter when XADD fails`() {
+            runCatching { sut.ingest(userId, request, ip) }
+
+            assertThat(meterRegistry.counter("ticketing.order.queue.size").count()).isZero()
         }
     }
 

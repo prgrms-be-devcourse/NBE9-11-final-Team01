@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.order.api.service
 
+import com.develop.snaptix.domain.order.observability.OrderMetrics
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
@@ -34,7 +35,7 @@ class BackpressureGuardTest {
     fun setUp() {
         MockitoAnnotations.openMocks(this)
         // 메트릭 카운터 Mocking 세팅
-        given(meterRegistry.counter("ticketing.order.backpressure.count")).willReturn(counter)
+        given(meterRegistry.counter(OrderMetrics.BACKPRESSURE_COUNT)).willReturn(counter)
     }
 
     @Test

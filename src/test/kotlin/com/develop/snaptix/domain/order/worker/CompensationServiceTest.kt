@@ -3,6 +3,7 @@ package com.develop.snaptix.domain.order.worker
 import com.develop.snaptix.domain.reservation.repository.ReservationRepository
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import com.develop.snaptix.support.IntegrationTestSupport
+import io.micrometer.core.instrument.MeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -28,12 +29,19 @@ class CompensationServiceTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var keys: RedisKeyFactory
 
+    // Spring 공유 컨텍스트의 MeterRegistry — 카운터 누적을 방지하기 위해 @BeforeEach에서 기준값을 기록한다
+    @Autowired
+    private lateinit var meterRegistry: MeterRegistry
+
     @MockitoBean
     private lateinit var reservationRepository: ReservationRepository
 
     private val zoneId = 777L
     private lateinit var stockKey: String
     private lateinit var claimedKey: String
+
+    // 공유 컨텍스트에서의 카운터 누적 방지 — 테스트마다 시작값을 스냅샷
+    private var initialCompensateCount = 0.0
 
     @BeforeEach
     fun setUp() {
@@ -42,6 +50,13 @@ class CompensationServiceTest : IntegrationTestSupport() {
 
         // 각 테스트 격리를 위해 Redis 키 초기화
         redisTemplate.delete(listOf(stockKey, claimedKey))
+
+        // 공유 MeterRegistry 누적 방어: 시작 시점의 카운터 값을 기록
+        initialCompensateCount =
+            meterRegistry
+                .find("ticketing.stock.compensate.count")
+                .counter()
+                ?.count() ?: 0.0
     }
 
     @Nested
@@ -65,6 +80,9 @@ class CompensationServiceTest : IntegrationTestSupport() {
 
             // [Java Mockito] DB 조회가 단 한 번도 발생하지 않았음을 검증
             verify(reservationRepository, never()).findByOrderId(anyString())
+
+            // [메트릭] 보상 없으므로 compensate_count 미증가
+            assertThat(compensateDelta()).isZero()
         }
 
         @Test
@@ -93,6 +111,9 @@ class CompensationServiceTest : IntegrationTestSupport() {
 
             // [Java Mockito] DB 조회가 정확히 1회 일어났는지 검증
             verify(reservationRepository, times(1)).findByOrderId(orderId.toString())
+
+            // [메트릭] 이중 보상 방어로 스킵됐으므로 compensate_count 미증가
+            assertThat(compensateDelta()).isZero()
         }
 
         @Test
@@ -120,6 +141,22 @@ class CompensationServiceTest : IntegrationTestSupport() {
 
             // [Java Mockito] DB 조회가 1회 일어났는지 검증
             verify(reservationRepository, times(1)).findByOrderId(orderId.toString())
+
+            // [메트릭] 보상 완료 시 compensate_count +1
+            assertThat(compensateDelta()).isEqualTo(1.0)
         }
     }
+
+    // ── 헬퍼 ────────────────────────────────────────────────────────────────────
+
+    /**
+     * 공유 MeterRegistry의 compensate_count 카운터를 테스트 시작 시점 기준으로 델타 계산.
+     * 스프링 컨텍스트가 공유되므로 절댓값 대신 증분만 검증한다.
+     */
+    private fun compensateDelta(): Double = (
+        meterRegistry
+            .find("ticketing.stock.compensate.count")
+            .counter()
+            ?.count() ?: 0.0
+    ) - initialCompensateCount
 }
