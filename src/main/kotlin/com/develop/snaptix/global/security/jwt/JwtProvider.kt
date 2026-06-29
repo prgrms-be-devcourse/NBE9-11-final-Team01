@@ -2,6 +2,8 @@ package com.develop.snaptix.global.security.jwt
 
 import com.develop.snaptix.domain.user.entity.UserRole
 import io.jsonwebtoken.Claims
+import io.jsonwebtoken.ExpiredJwtException
+import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.springframework.stereotype.Component
@@ -11,6 +13,12 @@ import java.util.Date
 import javax.crypto.SecretKey
 
 private const val ROLE_CLAIM = "role"
+
+enum class JwtValidationStatus {
+    VALID,
+    EXPIRED,
+    INVALID,
+}
 
 @Component
 class JwtProvider(
@@ -39,9 +47,18 @@ class JwtProvider(
         expiresInSeconds = jwtProperties.refreshTokenExpirationSeconds,
     )
 
-    fun isValid(token: String): Boolean = runCatching {
+    fun isValid(token: String): Boolean = validate(token) == JwtValidationStatus.VALID
+
+    fun validate(token: String): JwtValidationStatus = try {
         parseClaims(token)
-    }.isSuccess
+        JwtValidationStatus.VALID
+    } catch (_: ExpiredJwtException) {
+        JwtValidationStatus.EXPIRED
+    } catch (_: JwtException) {
+        JwtValidationStatus.INVALID
+    } catch (_: IllegalArgumentException) {
+        JwtValidationStatus.INVALID
+    }
 
     fun getUserId(token: String): Long = parseClaims(token).subject.toLong()
 
