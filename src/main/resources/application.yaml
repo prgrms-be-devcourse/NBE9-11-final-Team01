@@ -71,12 +71,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
+  metrics:
+    tags:
+      application: snaptix
+      env: ${spring.profiles.active}
 
 custom:
   dev:
