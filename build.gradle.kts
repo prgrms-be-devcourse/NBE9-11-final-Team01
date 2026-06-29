@@ -64,6 +64,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-session-data-redis")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
+    // Aspect Annotation
+    implementation("org.aspectj:aspectjweaver")
+
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("tools.jackson.module:jackson-module-kotlin")
@@ -89,24 +92,28 @@ dependencies {
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.13.0")
 
     // Resilience4j (Circuit Breaker)
-    implementation("io.github.resilience4j:resilience4j-circuitbreaker:2.4.0")
-    implementation("io.github.resilience4j:resilience4j-kotlin:2.4.0")
+    implementation("io.github.resilience4j:resilience4j-spring-boot4:2.4.0")
 
     // Structured Logging (JSON)
     implementation("io.github.oshai:kotlin-logging-jvm:8.0.4")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
+
+    // OpenAPI
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.springframework.boot:spring-boot-starter-session-data-redis-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.4.1")
     testImplementation("io.mockk:mockk:1.14.11")
     implementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")
     testImplementation("org.testcontainers:testcontainers-mysql")
     testImplementation("com.redis:testcontainers-redis:2.2.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 }
 
 kotlin {

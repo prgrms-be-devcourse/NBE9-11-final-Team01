@@ -1,8 +1,5 @@
 package com.develop.snaptix.global.exception
 
-import global.exception.BusinessException
-import global.exception.ErrorCode
-import global.exception.GlobalExceptionHandler
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.junit.jupiter.api.BeforeEach
@@ -78,12 +75,11 @@ class GlobalExceptionHandlerTest {
 
         /** NoResourceFoundException 직접 발생 */
         @GetMapping("/test/no-resource")
-        fun noResource(): Nothing =
-            throw NoResourceFoundException(
-                HttpMethod.GET,
-                "/test/no-resource",
-                "/static/missing.js",
-            )
+        fun noResource(): Nothing = throw NoResourceFoundException(
+            HttpMethod.GET,
+            "/test/no-resource",
+            "/static/missing.js",
+        )
 
         /** DataIntegrityViolationException 직접 발생 */
         @GetMapping("/test/data-integrity")

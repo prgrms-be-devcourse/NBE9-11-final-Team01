@@ -1,0 +1,217 @@
+package com.develop.snaptix.global.aop.aspect
+
+import com.develop.snaptix.global.aop.annotation.RedisCacheAside
+import com.develop.snaptix.global.aop.type.AspectOrder
+import com.develop.snaptix.global.exception.redis.RedisUnavailableException
+import com.develop.snaptix.global.redis.gateway.RedisCacheGateway
+import io.github.oshai.kotlinlogging.KotlinLogging
+import org.aspectj.lang.ProceedingJoinPoint
+import org.aspectj.lang.annotation.Around
+import org.aspectj.lang.annotation.Aspect
+import org.aspectj.lang.reflect.MethodSignature
+import org.slf4j.MDC
+import org.springframework.core.annotation.Order
+import org.springframework.dao.DataAccessException
+import org.springframework.stereotype.Component
+import tools.jackson.core.JacksonException
+import tools.jackson.databind.ObjectMapper
+import java.time.Duration
+
+@Aspect
+@Component
+@Order(AspectOrder.CACHE_ASIDE)
+class CacheAsideAspect(
+    private val redisCacheGateway: RedisCacheGateway,
+    private val objectMapper: ObjectMapper,
+) {
+    companion object {
+        private val log = KotlinLogging.logger {}
+    }
+
+    @Around("@annotation(cacheAside)")
+    fun around(
+        jp: ProceedingJoinPoint,
+        cacheAside: RedisCacheAside,
+    ): Any? {
+        val key = buildKey(jp, cacheAside)
+        val start = System.currentTimeMillis()
+        val traceId = MDC.get("traceId") ?: "unknown"
+
+        return when (val result = tryGetCached(key, cacheAside, traceId, start)) {
+            is GetResult.Hit -> resolveHit(result.json, jp, key, traceId, start)
+            GetResult.Miss -> resolveMiss(jp, cacheAside, key, traceId, start)
+            GetResult.Fallback -> jp.proceed()
+        }
+    }
+
+    // ── Redis GET ─────────────────────────────────────────────────────
+
+    private fun tryGetCached(
+        key: String,
+        cacheAside: RedisCacheAside,
+        traceId: String,
+        start: Long,
+    ): GetResult = try {
+        when (val json = redisCacheGateway.get(key)) {
+            null -> GetResult.Miss
+            else -> GetResult.Hit(json)
+        }
+    } catch (e: DataAccessException) {
+        if (!cacheAside.fallbackOnMiss) throw e
+        logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
+        GetResult.Fallback
+    } catch (e: RedisUnavailableException) {
+        if (!cacheAside.fallbackOnMiss) throw e
+        logWarn("CACHE_GET", "FALLBACK_DB", key, traceId, elapsed(start), e)
+        GetResult.Fallback
+    }
+
+    // ── HIT 처리 ──────────────────────────────────────────────────────
+
+    private fun resolveHit(
+        json: String,
+        jp: ProceedingJoinPoint,
+        key: String,
+        traceId: String,
+        start: Long,
+    ): Any? {
+        val returnType = (jp.signature as MethodSignature).returnType
+        return try {
+            objectMapper
+                .readValue(json, returnType)
+                .also { logInfo("CACHE_GET", "HIT", key, traceId, elapsed(start)) }
+        } catch (e: JacksonException) {
+            logWarn("CACHE_GET", "CORRUPTED", key, traceId, elapsed(start), e)
+            evictCorrupted(key, traceId, start)
+            jp.proceed()
+        }
+    }
+
+    // ── MISS 처리 ─────────────────────────────────────────────────────
+
+    private fun resolveMiss(
+        jp: ProceedingJoinPoint,
+        cacheAside: RedisCacheAside,
+        key: String,
+        traceId: String,
+        start: Long,
+    ): Any? {
+        val result = jp.proceed()
+        logInfo("CACHE_GET", "MISS", key, traceId, elapsed(start))
+        if (result != null) setCache(key, result, cacheAside.ttlSeconds, traceId, start)
+        return result
+    }
+
+    // ── 캐시 적재 (best-effort) ───────────────────────────────────────
+
+    private fun setCache(
+        key: String,
+        value: Any,
+        ttlSeconds: Long,
+        traceId: String,
+        start: Long,
+    ) {
+        try {
+            val json = objectMapper.writeValueAsString(value)
+            redisCacheGateway.put(key, json, Duration.ofSeconds(ttlSeconds))
+            logInfo("CACHE_SET", "SUCCESS", key, traceId, elapsed(start))
+        } catch (e: JacksonException) {
+            logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
+        } catch (e: DataAccessException) {
+            logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
+        } catch (e: RedisUnavailableException) {
+            logWarn("CACHE_SET", "FAIL", key, traceId, elapsed(start), e)
+        }
+    }
+
+    // ── 손상 키 제거 ──────────────────────────────────────────────────
+
+    private fun evictCorrupted(
+        key: String,
+        traceId: String,
+        start: Long,
+    ) {
+        try {
+            redisCacheGateway.evict(key)
+        } catch (e: DataAccessException) {
+            // 삭제 실패는 TTL 만료로 자연 해소 — 진행은 계속
+            logWarn("CACHE_INVALIDATE", "DEL_FAIL", key, traceId, elapsed(start), e)
+        } catch (e: RedisUnavailableException) {
+            logWarn("CACHE_INVALIDATE", "DEL_FAIL", key, traceId, elapsed(start), e)
+        }
+    }
+
+    // ── 키 구성 ───────────────────────────────────────────────────────
+
+    private fun buildKey(
+        jp: ProceedingJoinPoint,
+        cacheAside: RedisCacheAside,
+    ): String {
+        val id =
+            jp.args
+                .filterIsInstance<String>()
+                .firstOrNull()
+                ?: throw IllegalArgumentException(
+                    "@RedisCacheAside 메서드[${jp.signature.name}]에 String 식별자 인자가 없습니다.",
+                )
+        return "${cacheAside.keyPrefix}:$id"
+    }
+
+    // ── 로깅 ─────────────────────────────────────────────────────────
+
+    private fun elapsed(start: Long) = System.currentTimeMillis() - start
+
+    private fun logInfo(
+        action: String,
+        result: String,
+        key: String,
+        traceId: String,
+        ms: Long,
+    ) {
+        log.atInfo {
+            message = "Cache operation"
+            payload =
+                mapOf(
+                    "action" to action,
+                    "result" to result,
+                    "key" to key,
+                    "traceId" to traceId,
+                    "executionTimeMs" to ms,
+                )
+        }
+    }
+
+    private fun logWarn(
+        action: String,
+        result: String,
+        key: String,
+        traceId: String,
+        ms: Long,
+        cause: Throwable? = null,
+    ) {
+        log.atWarn {
+            message = "Cache operation warning"
+            this.cause = cause
+            payload =
+                mapOf(
+                    "action" to action,
+                    "result" to result,
+                    "key" to key,
+                    "traceId" to traceId,
+                    "executionTimeMs" to ms,
+                )
+        }
+    }
+
+    // ── 캐시 조회 결과 타입 ───────────────────────────────────────────
+
+    private sealed interface GetResult {
+        data class Hit(
+            val json: String,
+        ) : GetResult
+
+        data object Miss : GetResult
+
+        data object Fallback : GetResult
+    }
+}
