@@ -1,0 +1,30 @@
+# 배치 경로: monitoring/prometheus/prometheus.yml
+
+global:
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+scrape_configs:
+    # 로컬 앱(IDE/gradle, :8080) 스크랩
+    - job_name: 'snaptix-local'
+      metrics_path: /actuator/prometheus
+      static_configs:
+          - targets: ['host.docker.internal:8080']
+            labels:
+                instance: 'local-app'
+
+    # ─────────────────────────────────────────────────────────────
+    # (PR-D) 부하테스트용 운영 scrape — A 레코드 + NPM(Basic Auth + HTTPS + 경로 제한) 준비 후 활성화.
+    # 명세서 §7.4 / §7.6 참고. 시크릿(PROM_USER/PROM_PASS)은 환경변수로 주입.
+    #
+    # - job_name: 'snaptix-prod'
+    #   scheme: https
+    #   metrics_path: /actuator/prometheus
+    #   basic_auth:
+    #     username: ${PROM_USER}
+    #     password: ${PROM_PASS}
+    #   static_configs:
+    #     - targets: ['<metrics-host>']      # 전용 A 레코드(직접 등록)
+    #       labels:
+    #         instance: 'prod-app'
+    # ─────────────────────────────────────────────────────────────
