@@ -1,7 +1,9 @@
 package com.develop.snaptix.global.security.jwt
 
 import com.develop.snaptix.domain.user.entity.UserRole
+import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
+import com.develop.snaptix.global.security.handler.SecurityErrorResponseWriter
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
@@ -10,6 +12,7 @@ import org.springframework.mock.web.MockFilterChain
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
+import tools.jackson.databind.ObjectMapper
 
 private const val FILTER_TEST_SECRET = "test-secret-key-for-snaptix-jwt-filter-256-bit"
 
@@ -22,7 +25,11 @@ class JwtAuthenticationFilterTest {
         }
 
     private val jwtProvider = JwtProvider(jwtProperties)
-    private val filter = JwtAuthenticationFilter(jwtProvider)
+    private val filter =
+        JwtAuthenticationFilter(
+            jwtProvider,
+            SecurityErrorResponseWriter(ObjectMapper()),
+        )
 
     @AfterEach
     fun tearDown() {
@@ -71,9 +78,12 @@ class JwtAuthenticationFilterTest {
     @Test
     fun `accessToken cookie가 유효하지 않으면 인증 정보를 저장하지 않는다`() {
         val request = MockHttpServletRequest().apply { setCookies(Cookie("accessToken", "invalid-token")) }
+        val response = MockHttpServletResponse()
 
-        filter.doFilter(request, MockHttpServletResponse(), MockFilterChain())
+        filter.doFilter(request, response, MockFilterChain())
 
         assertThat(SecurityContextHolder.getContext().authentication).isNull()
+        assertThat(response.status).isEqualTo(ErrorCode.TOKEN_INVALID.status.value())
+        assertThat(response.contentAsString).contains(ErrorCode.TOKEN_INVALID.code)
     }
 }
