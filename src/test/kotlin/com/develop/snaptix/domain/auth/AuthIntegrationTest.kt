@@ -152,6 +152,21 @@ class AuthIntegrationTest(
             .andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+                jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
+                jsonPath("$.errors") { value(null) }
+            }
+    }
+
+    @Test
+    fun `유효하지 않은 accessToken 쿠키로 인증 필요한 API 접근 시 401을 반환한다`() {
+        mockMvc
+            .get("/api/v1/auth-test/protected") {
+                cookie(Cookie("accessToken", "invalid-token"))
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.TOKEN_INVALID.code) }
+                jsonPath("$.message") { value(ErrorCode.TOKEN_INVALID.message) }
+                jsonPath("$.errors") { value(null) }
             }
     }
 
