@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.scheduler
 
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
+import com.develop.snaptix.global.observability.OrderStreamTrimMetrics
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.StreamTrimResult
 import io.mockk.clearAllMocks
@@ -16,6 +17,7 @@ class OrderStreamTrimSchedulerTest {
     private val targetRepository = mockk<OrderStreamTrimTargetRepository>()
     private val orderStreamGateway = mockk<OrderStreamGateway>()
     private val orderStreamProperties = OrderStreamProperties(consumerGroup = GROUP)
+    private val orderStreamTrimMetrics = mockk<OrderStreamTrimMetrics>(relaxed = true)
     private lateinit var scheduler: OrderStreamTrimScheduler
 
     @BeforeEach
@@ -25,6 +27,7 @@ class OrderStreamTrimSchedulerTest {
                 targetRepository = targetRepository,
                 orderStreamGateway = orderStreamGateway,
                 orderStreamProperties = orderStreamProperties,
+                orderStreamTrimMetrics = orderStreamTrimMetrics,
                 enabled = true,
             )
     }
@@ -113,6 +116,7 @@ class OrderStreamTrimSchedulerTest {
                 targetRepository = targetRepository,
                 orderStreamGateway = orderStreamGateway,
                 orderStreamProperties = orderStreamProperties,
+                orderStreamTrimMetrics = orderStreamTrimMetrics,
                 enabled = false,
             )
 

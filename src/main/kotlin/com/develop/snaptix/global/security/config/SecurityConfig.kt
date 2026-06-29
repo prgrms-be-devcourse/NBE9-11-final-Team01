@@ -46,6 +46,7 @@ class SecurityConfig {
                 authorize("/api/v1/auth/login", permitAll)
                 authorize(HttpMethod.POST, "/api/v1/payments/mock/webhook", permitAll)
                 authorize("/actuator/health", permitAll)
+                authorize("/actuator/prometheus", permitAll)
                 authorize(HttpMethod.GET, "/api/v1/events/**", permitAll)
                 authorize("/api/v1/admin/**", hasRole("ADMIN"))
                 authorize("/api/v1/staff/**", hasAnyRole("STAFF", "ADMIN"))

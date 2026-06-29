@@ -1,7 +1,6 @@
 import dev.detekt.gradle.Detekt
 import dev.detekt.gradle.DetektCreateBaselineTask
 
-
 plugins {
     kotlin("jvm") version "2.3.21"
     kotlin("plugin.spring") version "2.3.21"
@@ -85,6 +84,9 @@ dependencies {
 
     // Database
     runtimeOnly("com.mysql:mysql-connector-j")
+
+    // Prometheus
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
 
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")

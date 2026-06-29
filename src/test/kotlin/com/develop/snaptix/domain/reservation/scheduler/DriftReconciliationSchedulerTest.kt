@@ -2,6 +2,7 @@ package com.develop.snaptix.domain.reservation.scheduler
 
 import com.develop.snaptix.domain.reservation.service.DriftReconciliationService
 import com.develop.snaptix.domain.reservation.service.DriftReport
+import com.develop.snaptix.global.observability.DriftMetrics
 import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
@@ -20,6 +21,7 @@ import java.time.ZoneOffset
 
 class DriftReconciliationSchedulerTest {
     private val service = mockk<DriftReconciliationService>()
+    private val driftMetrics = mockk<DriftMetrics>(relaxed = true)
     private val emptyReport = DriftReport(fixed = 0, oversell = 0, unchanged = 0, skipped = 0, failed = 0)
 
     @Test
@@ -27,7 +29,7 @@ class DriftReconciliationSchedulerTest {
         // given: 시계를 한 시점으로 고정
         val fixedInstant = Instant.parse("2026-06-25T03:00:00Z")
         val fixedClock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
-        val scheduler = DriftReconciliationScheduler(service, fixedClock)
+        val scheduler = DriftReconciliationScheduler(service, driftMetrics, fixedClock)
         every { service.checkDrift(any()) } returns emptyReport
 
         // when
@@ -41,7 +43,7 @@ class DriftReconciliationSchedulerTest {
     @Test
     fun `should_checkDrift를_정확히_1회만_호출_when_단일_트리거면`() {
         val fixedClock = Clock.fixed(Instant.parse("2026-06-25T00:30:00Z"), ZoneOffset.UTC)
-        val scheduler = DriftReconciliationScheduler(service, fixedClock)
+        val scheduler = DriftReconciliationScheduler(service, driftMetrics, fixedClock)
         every { service.checkDrift(any()) } returns emptyReport
 
         scheduler.checkDrift()

@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.order.scheduler
 
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
+import com.develop.snaptix.global.observability.OrderStreamTrimMetrics
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Value
@@ -18,6 +19,7 @@ class OrderStreamTrimScheduler(
     private val targetRepository: OrderStreamTrimTargetRepository,
     private val orderStreamGateway: OrderStreamGateway,
     private val orderStreamProperties: OrderStreamProperties,
+    private val orderStreamTrimMetrics: OrderStreamTrimMetrics,
     @Value("\${order.stream.trim.enabled:true}") private val enabled: Boolean,
 ) {
     private val log = KotlinLogging.logger {}
@@ -51,9 +53,12 @@ class OrderStreamTrimScheduler(
     }
 
     @Suppress("TooGenericExceptionCaught")
+    // trimEventStream() try 블록 — 게이트웨이 호출을 타이밍으로 감싸고 기록
     private fun trimEventStream(eventPublicId: UUID) {
+        val start = System.nanoTime()
         try {
             val result = orderStreamGateway.trimAcknowledged(eventPublicId, orderStreamProperties.consumerGroup)
+            orderStreamTrimMetrics.recordTrimmed(result.trimmedCount, System.nanoTime() - start)
             if (result.trimmedCount > 0L) {
                 log.info {
                     "Order stream trim completed: eventPublicId=$eventPublicId, " +

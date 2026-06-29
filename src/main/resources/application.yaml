@@ -79,7 +79,8 @@ management:
       show-details: never
   metrics:
     tags:
-      application: ${spring.application.name}
+      application: snaptix
+      env: ${spring.profiles.active}
 
 custom:
   dev:

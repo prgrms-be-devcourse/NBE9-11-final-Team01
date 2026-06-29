@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
+import com.develop.snaptix.global.observability.RebuildMetrics
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
@@ -27,6 +28,7 @@ class RebuildService(
     private val rebuildRedisWriter: RebuildRedisWriter,
     private val rebuildCoordinator: RebuildCoordinator,
     private val readOnlyModeHolder: ReadOnlyModeHolder,
+    private val rebuildMetrics: RebuildMetrics,
     private val alertService: AlertService,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
@@ -35,10 +37,12 @@ class RebuildService(
     @Suppress("TooGenericExceptionCaught") // 광역 catch: 어느 단계 실패든 Read-Only·락 해제 보장
     fun rebuild() {
         if (!rebuildCoordinator.tryAcquire()) {
+            rebuildMetrics.recordSkipped()
             logger.atInfo { message = "Rebuild skipped: lock not acquired (another instance running)" }
             return
         }
 
+        val startNanos = System.nanoTime()
         readOnlyModeHolder.enable()
         val now = Instant.now(clock) // 진입 시 1회 고정 → 모든 단계 공유
         alertService.notify(AlertContext(trigger = AlertTrigger.REBUILD_STARTED))
@@ -48,7 +52,13 @@ class RebuildService(
             val snapshot = rebuildSnapshotReader.read(now) // 단일 일관 스냅샷
             applySnapshot(snapshot) // (b) event:info → (c+d) stock·claimed
             notifyCompleted(snapshot, startedAt = now)
+            rebuildMetrics.recordCompleted( // ← 추가
+                events = snapshot.events.size,
+                zones = snapshot.events.sumOf { it.zones.size },
+                durationNanos = System.nanoTime() - startNanos,
+            )
         } catch (e: Exception) {
+            rebuildMetrics.recordFailed(System.nanoTime() - startNanos)
             alertService.notify(
                 AlertContext(
                     trigger = AlertTrigger.REBUILD_FAILED,
