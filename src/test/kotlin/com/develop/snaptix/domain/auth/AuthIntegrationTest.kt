@@ -115,11 +115,33 @@ class AuthIntegrationTest(
         val logoutCookies = logoutResult.response.getHeaders(HttpHeaders.SET_COOKIE)
         assertThat(logoutCookies).hasSize(2)
         assertThat(logoutCookies).anySatisfy {
-            assertThat(it).contains("accessToken=").contains("Max-Age=0")
+            assertThat(it)
+                .contains("accessToken=")
+                .contains("Path=/")
+                .contains("Max-Age=0")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
         }
         assertThat(logoutCookies).anySatisfy {
-            assertThat(it).contains("refreshToken=").contains("Max-Age=0")
+            assertThat(it)
+                .contains("refreshToken=")
+                .contains("Path=/api/v1/auth/refresh")
+                .contains("Max-Age=0")
+                .contains("Secure")
+                .contains("HttpOnly")
+                .contains("SameSite=Strict")
         }
+
+        mockMvc
+            .get("/api/v1/auth-test/protected") {
+                cookie(logoutCookies.toRequestCookie("accessToken"))
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+                jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
+                jsonPath("$.errors") { value(null) }
+            }
     }
 
     @Test
@@ -294,6 +316,8 @@ class AuthIntegrationTest(
             .andExpect {
                 status { isUnauthorized() }
                 jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+                jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
+                jsonPath("$.errors") { value(null) }
             }
     }
 
