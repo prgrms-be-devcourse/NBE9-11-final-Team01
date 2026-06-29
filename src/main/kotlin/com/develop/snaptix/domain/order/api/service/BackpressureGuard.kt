@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.order.api.service
 
+import com.develop.snaptix.domain.order.observability.OrderMetrics
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
@@ -37,7 +38,7 @@ class BackpressureGuard(
             }
 
             // 프로메테우스/그라파나 모니터링을 위한 백프레셔 발동 메트릭 증가
-            meterRegistry.counter("ticketing.order.backpressure.count").increment()
+            meterRegistry.counter(OrderMetrics.BACKPRESSURE_COUNT).increment()
 
             // 429 Too Many Requests 응답 유도
             throw BusinessException(ErrorCode.QUEUE_CAPACITY_EXCEEDED)

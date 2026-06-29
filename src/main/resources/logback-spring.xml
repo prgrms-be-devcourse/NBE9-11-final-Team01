@@ -4,11 +4,12 @@
     <!-- Spring Boot 기본 로그 설정 상속 -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <!-- 개발 환경: 일반 텍스트 출력 -->
+    <!-- 개발 환경: 텍스트 출력 (MDC 필드 포함) -->
     <springProfile name="default, local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [traceId=%X{traceId}] %logger{36} - %msg%n</pattern>
+                <!-- #14: userId/eventId/zoneId/action/result MDC 필드 패턴에 포함 -->
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [traceId=%X{traceId}] [userId=%X{userId}] [eventId=%X{eventId}] [zoneId=%X{zoneId}] %logger{36} - %msg%n</pattern>
             </encoder>
         </appender>
 
@@ -17,12 +18,20 @@
         </root>
     </springProfile>
 
-    <!-- 운영 환경: JSON 구조화 로그 출력 -->
+    <!-- 운영 환경: JSON 구조화 로그 출력 (#14 Story 14.1) -->
     <springProfile name="dev, prod, staging">
         <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-                <!-- MDC의 traceId를 JSON 필드로 자동 포함 -->
+                <!--
+                    MDC 필드를 JSON 필드로 자동 포함 (#14 §14 In-scope 로깅 표준).
+                    traceId: 전역 필터 주입
+                    userId / eventId / zoneId: OrderMdc.set() 주입 (서비스 진입부)
+                    action / result / executionTimeMs: KotlinLogging payload 맵 직접 기록
+                -->
                 <includeMdcKeyName>traceId</includeMdcKeyName>
+                <includeMdcKeyName>userId</includeMdcKeyName>
+                <includeMdcKeyName>eventId</includeMdcKeyName>
+                <includeMdcKeyName>zoneId</includeMdcKeyName>
                 <!-- 불필요한 기본 필드 제거 -->
                 <fieldNames>
                     <timestamp>timestamp</timestamp>
