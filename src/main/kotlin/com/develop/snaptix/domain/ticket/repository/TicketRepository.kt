@@ -1,5 +1,6 @@
 package com.develop.snaptix.domain.ticket.repository
 
+import com.develop.snaptix.domain.ticket.entity.TicketStatus
 import com.develop.snaptix.domain.ticket.entity.TicketsTable
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
@@ -8,6 +9,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.util.UUID
 
 /** 검표·테스트에서 사용하는 티켓 읽기 모델. */
 data class TicketRecord(
@@ -54,6 +56,30 @@ class TicketRepository {
             it[TicketsTable.issuedAt] = issuedAt
             it[TicketsTable.usedAt] = usedAt
         } get TicketsTable.id
+    }
+
+    /**
+     * 결제 확정 시 발권 전용 INSERT.
+     *
+     * - [TicketStatus.ISSUED] 상태, [issuedAt] = 현재 시각으로 행을 삽입한다.
+     * - [ticketCode] 는 UUID v4 문자열(36자). `ticket_code` UNIQUE 인덱스를 충족한다.
+     * - 삽입된 [ticketCode] 를 반환한다 — [TicketService] 가 SSE payload 에 포함한다.
+     *
+     * > **테스트 픽스처용 [insert]** 와 구분: 이 메서드는 서비스 계층 전용이며
+     * > status / issuedAt 을 강제로 고정한다.
+     *
+     * @param reservationId `reservations.id` FK
+     * @return 생성된 ticketCode (UUID 문자열)
+     */
+    fun issue(reservationId: Long): String = transaction {
+        val ticketCode = UUID.randomUUID().toString()
+        TicketsTable.insert {
+            it[TicketsTable.reservationId] = reservationId
+            it[TicketsTable.ticketCode] = ticketCode
+            it[TicketsTable.status] = TicketStatus.ISSUED.name
+            it[TicketsTable.issuedAt] = Instant.now()
+        }
+        ticketCode
     }
 
     private fun ResultRow.toRecord() = TicketRecord(

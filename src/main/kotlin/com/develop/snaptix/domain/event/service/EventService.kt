@@ -13,6 +13,7 @@ import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.springframework.dao.DataAccessException
@@ -34,6 +35,7 @@ class EventService(
     private val zoneRepository: ZoneRepository,
     private val eventRedisInitializer: EventRedisInitializer,
     private val eventRedisKeyCleaner: EventRedisKeyCleaner,
+    private val redisKeyFactory: RedisKeyFactory,
 ) {
     private val logger = KotlinLogging.logger {}
 
@@ -73,7 +75,7 @@ class EventService(
                         name = zone.name,
                         unitPrice = zone.unitPrice,
                         totalCapacity = zone.totalCapacity,
-                        redisStockKey = eventRedisInitializer.stockKey(zone.id),
+                        redisStockKey = redisKeyFactory.stock(zone.id),
                     )
                 }
 

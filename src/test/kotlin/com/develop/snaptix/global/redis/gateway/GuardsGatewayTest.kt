@@ -1,21 +1,15 @@
 package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.redis.config.RedisTtlProperties
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 import java.util.UUID
 
 @SpringBootTest
-@Testcontainers
-class GuardsGatewayTest {
+class GuardsGatewayTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var rateLimit: RateLimitRedisGateway
 
@@ -62,7 +56,9 @@ class GuardsGatewayTest {
     fun `webhook 가드는 첫 등록만 true, 재등록은 false`() {
         val orderId = UUID.randomUUID()
 
+        assertThat(webhookGuard.isProcessed(orderId)).isFalse()
         assertThat(webhookGuard.markProcessed(orderId)).isTrue()
+        assertThat(webhookGuard.isProcessed(orderId)).isTrue()
         assertThat(webhookGuard.markProcessed(orderId)).isFalse()
     }
 
@@ -82,31 +78,5 @@ class GuardsGatewayTest {
         private const val PER_MINUTE = 20
         private const val HIGH_LIMIT = 1000
         private const val LOW_MINUTE = 3
-
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redisContainer =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(REDIS_PORT)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redisContainer::getHost)
-            registry.add("spring.data.redis.port") { redisContainer.getMappedPort(REDIS_PORT) }
-        }
     }
 }

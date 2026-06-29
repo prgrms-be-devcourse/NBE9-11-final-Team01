@@ -32,6 +32,10 @@ class WebhookGuardRedisGateway(
             ?: false
     }
 
+    fun isProcessed(orderId: UUID): Boolean = executor.execute(RedisAction.WEBHOOK_IDEMPOTENCY) {
+        redis.hasKey(keys.webhookProcessed(orderId))
+    }
+
     companion object {
         private const val MARKER = "1"
     }

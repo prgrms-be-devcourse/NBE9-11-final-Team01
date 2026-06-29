@@ -4,8 +4,10 @@ import com.develop.snaptix.global.aop.type.RedisAction
 import com.develop.snaptix.global.redis.config.RedisTtlProperties
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import com.develop.snaptix.global.redis.resilience.ResilientRedisExecutor
+import com.develop.snaptix.global.redis.script.MARK_COMPLETED_SCRIPT
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -16,8 +18,8 @@ import java.util.UUID
  * - [tryAcquire]: 값=orderId로 `SET NX PX`(인게스트 봉투 TTL) 원자 선점.
  * - [reanchor]: 워커 홀드 생성 시 TTL을 홀드(5분)로 재설정.
  * - [compareAndDelete]: 값이 그 orderId일 때만 DEL → 유저 단위 키 경합(타임아웃↔재시도) 제거.
+ * - [markCompleted]: 결제 확정 시 값을 "COMPLETED"로 갱신, TTL 유지(`SET KEEPTTL` Lua).
  *
- * `markCompleted`(SET COMPLETED KEEPTTL)는 소비처(ISSUE-14)에서 KEEPTTL 스크립트와 함께 추가한다.
  * 모든 호출은 [ResilientRedisExecutor](action `IDEMPOTENCY_CHECK`)로 감싼다.
  */
 @Component
@@ -29,6 +31,14 @@ class IdempotencyRedisGateway(
     @Qualifier("compareAndDeleteScript")
     private val compareAndDeleteScript: RedisScript<Long>,
 ) {
+    /**
+     * `SET COMPLETED KEEPTTL` Lua 스크립트.
+     * Spring Data Redis가 KEEPTTL 옵션을 직접 지원하지 않으므로 인라인 [DefaultRedisScript]로 정의한다.
+     * @see MARK_COMPLETED_SCRIPT
+     */
+    private val markCompletedScript: RedisScript<Long> =
+        DefaultRedisScript(MARK_COMPLETED_SCRIPT, Long::class.java)
+
     /**
      * 멱등 키를 값=orderId로 원자 선점(`SET NX PX`).
      * @return true(선점 성공) / false(이미 존재 → 중복)
@@ -68,5 +78,28 @@ class IdempotencyRedisGateway(
             listOf(keys.idempotency(userId, eventId)),
             orderId.toString(),
         ) == 1L
+    }
+
+    /**
+     * 결제 확정 시 멱등 키 값을 [COMPLETED_VALUE]로 갱신하되 기존 TTL을 유지한다.
+     *
+     * 키가 만료된 경우 no-op — 재구매 방지는 DB `uk_active_user_event` 제약이 최종 방어선.
+     * `SET key value KEEPTTL` 은 Redis 6.0+ 전용이며 [markCompletedScript] Lua로 처리한다.
+     *
+     * @return true(갱신됨) / false(키 없음 — 이미 만료)
+     */
+    fun markCompleted(
+        userId: Long,
+        eventId: UUID,
+    ): Boolean = executor.execute(RedisAction.IDEMPOTENCY_CHECK) {
+        redis.execute(
+            markCompletedScript,
+            listOf(keys.idempotency(userId, eventId)),
+            COMPLETED_VALUE,
+        ) == 1L
+    }
+
+    private companion object {
+        const val COMPLETED_VALUE = "COMPLETED"
     }
 }

@@ -1,8 +1,8 @@
 package com.develop.snaptix.domain.reservation.repository
 
-import com.develop.snaptix.global.aop.annotation.RedisCircuitBreaker
-import org.springframework.data.redis.core.StringRedisTemplate
+import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import org.springframework.stereotype.Repository
+import java.util.UUID
 
 /**
  * PENDING(예약 행 생성 전) 단계의 주문 소유권 조회 포트.
@@ -16,20 +16,23 @@ fun interface OrderOwnerStore {
 }
 
 /**
- * Redis 기반 구현. 기존 패턴대로 [StringRedisTemplate] 직접 접근 + [RedisCircuitBreaker]로 보호한다.
- * (CB OPEN 시 RedisUnavailableException → 503. 다른 빈에서 호출되므로 AOP 발동)
+ * Redis 기반 구현. (ISSUE-16)
+ *
+ * 변경 전: @RedisCircuitBreaker AOP + StringRedisTemplate 직접 호출
+ * 변경 후: ResilientRedisExecutor.execute() — 서킷브레이커·로깅을 단일 진입점에서 처리.
+ *
+ * @RedisCircuitBreaker AOP는 self-invocation·비동기 워커에서 누락 위험이 있었으나
+ * 프로그래밍 방식 executor는 호출 경로에 무관하게 일관되게 적용된다.
+ *
+ * RedisAction.OWNERSHIP 을 사용한다.
+ *   (order:owner:{orderId} SET/GET/DEL 을 커버하는 기존 값, 신규 추가 불필요)
  */
 @Repository
 class RedisOrderOwnerStore(
-    private val redis: StringRedisTemplate,
+    private val ownershipRedisGateway: OwnershipRedisGateway,
 ) : OrderOwnerStore {
-    @RedisCircuitBreaker
-    override fun findOwnerUserId(orderId: String): Long? {
-        val ownerId = redis.opsForValue().get("$OWNER_KEY_PREFIX$orderId")
-        return ownerId?.toLongOrNull()
-    }
-
-    companion object {
-        private const val OWNER_KEY_PREFIX = "order:owner:"
-    }
+    override fun findOwnerUserId(orderId: String): Long? = runCatching {
+        val orderUuid = UUID.fromString(orderId)
+        ownershipRedisGateway.ownerOf(orderUuid)
+    }.getOrNull()
 }

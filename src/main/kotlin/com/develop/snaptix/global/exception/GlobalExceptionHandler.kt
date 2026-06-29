@@ -1,6 +1,7 @@
 package com.develop.snaptix.global.exception
 
 import com.develop.snaptix.global.exception.redis.RateLimitExceededException
+import com.develop.snaptix.global.exception.redis.RedisUnavailableException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.core.Ordered
@@ -25,14 +26,28 @@ import org.springframework.web.servlet.resource.NoResourceFoundException
 class GlobalExceptionHandler {
     private val logger = KotlinLogging.logger {}
 
-    // ✅ 비즈니스 예외 처리 (최우선)
+    // ✅ Redis 서킷 OPEN → 503 (ISSUE-16, Story 13.1)
+    // 같은 빈(@Order(HIGHEST_PRECEDENCE)) 내에서 BusinessException 핸들러보다
+    // 타입 구체성이 높으므로 우선 선택된다. 별도 @RestControllerAdvice 불필요.
+    @ExceptionHandler(RedisUnavailableException::class)
+    fun handleRedisUnavailable(request: HttpServletRequest): ResponseEntity<ErrorResponse> {
+        logger.warn { "[REDIS_UNAVAILABLE] path=${request.requestURI}" }
+        return ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(ErrorCode.REDIS_UNAVAILABLE.toErrorResponse())
+    }
+
+    // ✅ 비즈니스 예외 처리
     @ExceptionHandler(BusinessException::class)
     fun handleBusinessException(
         ex: BusinessException,
         request: HttpServletRequest,
     ): ResponseEntity<ErrorResponse> {
         logger.warn { "[BUSINESS_ERROR] code=${ex.errorCode.code}, message=${ex.message}, path=${request.requestURI}" }
-        return ResponseEntity.status(ex.httpStatus).body(ex.toErrorResponse())
+        return ResponseEntity
+            .status(ex.httpStatus)
+            .apply { ex.retryAfter?.let { header("Retry-After", it.seconds.toString()) } }
+            .body(ex.toErrorResponse())
     }
 
     // ✅ @Valid 검증 실패 (MethodArgumentNotValidException)

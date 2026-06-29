@@ -3,18 +3,13 @@ package com.develop.snaptix.global.realtime.subscribe
 import com.develop.snaptix.global.realtime.SseChannelKey
 import com.develop.snaptix.global.realtime.SseConnectionManager
 import com.develop.snaptix.global.realtime.SseEvent
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory
-import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.listener.RedisMessageListenerContainer
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import tools.jackson.module.kotlin.jacksonObjectMapper
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
@@ -24,28 +19,29 @@ import java.util.concurrent.TimeUnit
  * 실제 Redis(Testcontainers)로 subscribe → publish → dispatch 왕복을 검증한다 (PR-10).
  * emitter 까지 가지 않고, dispatch 를 기록하는 가짜 매니저로 라우팅만 본다.
  */
-@Testcontainers
-class SseRedisRoutingIT {
+class SseRedisRoutingIT : IntegrationTestSupport() {
     private val mapper = jacksonObjectMapper()
-    private lateinit var factory: LettuceConnectionFactory
     private lateinit var publisher: SseEventPublisher
     private val instances = mutableListOf<Instance>()
 
     @BeforeEach
     fun setUp() {
-        factory = LettuceConnectionFactory(redis.host, redis.getMappedPort(REDIS_PORT))
-        factory.afterPropertiesSet()
-        factory.start()
-        val template = StringRedisTemplate(factory).apply { afterPropertiesSet() }
-        publisher = SseEventPublisher(template, mapper)
+        // ✅ 팩토리를 수동으로 생성하고 start() 할 필요가 전혀 없음
+        // ✅ redisTemplate은 부모 클래스(IntegrationTestSupport)에 이미 protected로 선언되어 있으므로 바로 사용
+        publisher = SseEventPublisher(redisTemplate, mapper)
     }
 
     @AfterEach
     fun tearDown() {
-        instances.forEach { it.container.stop() }
+        // 개별 인스턴스들의 리스너 컨테이너만 안전하게 정리
+        instances.forEach {
+            it.container.stop()
+            it.container.destroy()
+        }
         instances.clear()
-        factory.stop()
-        factory.destroy()
+
+        // ❌ factory.stop(), factory.destroy() 삭제
+        // -> connectionFactory는 스프링이 관리하는 싱글톤 빈이므로 테스트에서 강제로 끄면 다른 테스트가 망가짐!
     }
 
     /** 한 "서버 인스턴스" = 자체 리스너 컨테이너 + 구독자 + dispatch 기록 매니저 */
@@ -54,7 +50,8 @@ class SseRedisRoutingIT {
         val manager = RecordingManager(dispatched)
         val container =
             RedisMessageListenerContainer().apply {
-                setConnectionFactory(factory)
+                // 부모 클래스의 redisTemplate에서 팩토리를 직접 가져옵니다.
+                setConnectionFactory(redisTemplate.connectionFactory!!)
                 afterPropertiesSet()
                 start()
             }
@@ -77,12 +74,12 @@ class SseRedisRoutingIT {
     @Test
     fun `구독하지 않은 인스턴스는 받지 않는다(라우팅)`() {
         val a = instance().also { it.subscriber.subscribe(KEY) }
-        val b = instance() // 다른 채널만 관심 → KEY 미구독
+        val b = instance()
         b.subscriber.subscribe(SseChannelKey("order", "other"))
 
-        awaitDispatched(a) { publisher.publish(KEY, READY) } // A 는 받음(구독 확정 대기)
+        awaitDispatched(a) { publisher.publish(KEY, READY) }
 
-        Assertions.assertThat(b.dispatched).isEmpty() // B 는 KEY 미수신
+        Assertions.assertThat(b.dispatched).isEmpty()
     }
 
     @Test
@@ -90,10 +87,11 @@ class SseRedisRoutingIT {
         val a = instance()
         a.subscriber.subscribe(KEY)
 
-        // 깨진 메시지를 직접 발행해도 죽지 않고, 이후 정상 메시지는 정상 수신
         val received =
             awaitDispatched(a) {
-                factory.connection.use { it.publish(KEY.redisChannel().toByteArray(), "broken".toByteArray()) }
+                redisTemplate.connectionFactory!!.connection.use {
+                    it.publish(KEY.redisChannel().toByteArray(), "broken".toByteArray())
+                }
                 publisher.publish(KEY, READY)
             }
         Assertions.assertThat(received.second.name).isEqualTo("READY_TO_PAY")
@@ -135,15 +133,9 @@ class SseRedisRoutingIT {
     }
 
     companion object {
-        private const val REDIS_PORT = 6379
         private const val AWAIT_MS = 5000L
         private const val POLL_MS = 150L
         private val KEY = SseChannelKey("order", "order-1")
         private val READY = SseEvent.ongoing("READY_TO_PAY", mapOf("orderId" to "order-1"))
-
-        @Container
-        @JvmStatic
-        val redis: GenericContainer<*> =
-            GenericContainer(DockerImageName.parse("redis:8.8.0")).withExposedPorts(REDIS_PORT)
     }
 }

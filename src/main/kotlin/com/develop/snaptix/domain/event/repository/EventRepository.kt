@@ -12,13 +12,13 @@ import org.jetbrains.exposed.v1.core.greaterEq
 import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.core.less
 import org.jetbrains.exposed.v1.core.like
-import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.util.UUID
 
 data class EventRecord(
     val id: Long,
@@ -120,14 +120,6 @@ class EventRepository {
             .where { EventsTable.id eq id }
             .singleOrNull()
             ?.toRecord()
-    }
-
-    /** 활성 이벤트(`status != CLOSED`) 상세. 재구축·드리프트 대상. (작업 명세서 §6.2·§6.5) */
-    fun findActiveEvents(): List<EventDetail> = transaction {
-        EventsTable
-            .selectAll()
-            .where { EventsTable.status neq EventStatus.CLOSED.name }
-            .map { it.toDetail() }
     }
 
     fun findEventDetailByPublicId(publicId: String): EventDetailQueryResult? = transaction {
@@ -243,6 +235,13 @@ class EventRepository {
             zones = zones,
             totalElements = totalElements,
         )
+    }
+
+    fun findActiveEventPublicIds(): List<UUID> = transaction {
+        EventsTable
+            .selectAll()
+            .where { EventsTable.status eq EventStatus.ON_SALE.name }
+            .mapNotNull { runCatching { UUID.fromString(it[EventsTable.publicId]) }.getOrNull() }
     }
 
     private fun publicEventWhere(condition: EventListSearchCondition): Op<Boolean> {

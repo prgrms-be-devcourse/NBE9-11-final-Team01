@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.reservation.entity.ReservationStatus
 import com.develop.snaptix.domain.reservation.repository.ReservationView
 import com.develop.snaptix.global.realtime.SseChannelKey
 import com.develop.snaptix.global.realtime.port.OwnershipResult
+import com.develop.snaptix.global.redis.config.RedisTtlProperties
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -22,9 +23,11 @@ class OrderSseAdapterTest {
     private fun adapter(
         reservation: ReservationView? = null,
         ownerKey: Long? = null,
+        orderHold: Duration = Duration.ofMinutes(5),
     ) = OrderSseAdapter(
         reservationQuery = { reservation },
         orderOwnerStore = { ownerKey },
+        redisTtlProperties = RedisTtlProperties(orderHold = orderHold),
     )
 
     // ── 소유권 check ──────────────────────────────────────────────────
@@ -69,10 +72,34 @@ class OrderSseAdapterTest {
 
     @Test
     fun `PENDING + 윈도우 내면 READY_TO_PAY(연결 유지)`() {
-        val sut = adapter(reservation = view(status = ReservationStatus.PENDING_PAYMENT, createdAt = Instant.now()))
+        val createdAt = Instant.now()
+        val sut = adapter(reservation = view(status = ReservationStatus.PENDING_PAYMENT, createdAt = createdAt))
+
         val event = sut.reconstruct(key)
+
         assertThat(event?.name).isEqualTo("READY_TO_PAY")
         assertThat(event?.terminal).isFalse()
+        val data = event?.data as Map<*, *>
+        assertThat(data["type"]).isEqualTo("READY_TO_PAY")
+        assertThat(data["orderId"]).isEqualTo(key.id)
+        assertThat(data["status"]).isEqualTo(ReservationStatus.PENDING_PAYMENT.name)
+        assertThat(data["message"]).isEqualTo("좌석이 확보되었습니다. 결제 대기 시간 내에 결제를 완료해주세요.")
+        assertThat(data["paymentDeadline"]).isEqualTo(createdAt.plus(Duration.ofMinutes(5)))
+    }
+
+    @Test
+    fun `READY_TO_PAY paymentDeadline은 설정된 홀드 duration으로 계산한다`() {
+        val createdAt = Instant.now()
+        val sut =
+            adapter(
+                reservation = view(status = ReservationStatus.PENDING_PAYMENT, createdAt = createdAt),
+                orderHold = Duration.ofMinutes(3),
+            )
+
+        val event = sut.reconstruct(key)
+
+        val data = event?.data as Map<*, *>
+        assertThat(data["paymentDeadline"]).isEqualTo(createdAt.plus(Duration.ofMinutes(3)))
     }
 
     @Test

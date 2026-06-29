@@ -1,19 +1,13 @@
-// 위치: src/test/kotlin/com/develop/snaptix/global/redis/gateway/StockRedisGatewayTest.kt
 package com.develop.snaptix.global.redis.gateway
 
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
+import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.redis.core.StringRedisTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.GenericContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.mysql.MySQLContainer
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -21,8 +15,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 @SpringBootTest
-@Testcontainers
-class StockRedisGatewayTest {
+class StockRedisGatewayTest : IntegrationTestSupport() {
     @Autowired
     private lateinit var gateway: StockRedisGateway
 
@@ -37,6 +30,8 @@ class StockRedisGatewayTest {
     fun cleanUp() {
         redis.delete(listOf(stockKey, claimedKey))
     }
+
+    // ── decreaseAndClaim ────────────────────────────────────────────────
 
     @Test
     fun `차감 성공 시 OK 반환, 재고 1 감소, claimed에 orderId 등록`() {
@@ -72,6 +67,8 @@ class StockRedisGatewayTest {
         assertThat(redis.opsForValue().get(stockKey)).isEqualTo("0")
     }
 
+    // ── compensate ──────────────────────────────────────────────────────
+
     @Test
     fun `보상은 claimed에 있을 때만 +1 및 제거, 재호출 시 이중 보상하지 않음`() {
         redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
@@ -88,31 +85,75 @@ class StockRedisGatewayTest {
         assertThat(redis.opsForValue().get(stockKey)).isEqualTo(SMALL_STOCK.toString())
     }
 
+    // ── removeClaimed ───────────────────────────────────────────────────
+
     @Test
-    fun `초기 100 동시 1000 차감 시 정확히 100건만 성공하고 최종 재고는 0`() {
-        redis.opsForValue().set(stockKey, INITIAL_STOCK.toString())
-        val pool = Executors.newFixedThreadPool(THREAD_POOL_SIZE)
-        val latch = CountDownLatch(CONCURRENT_ATTEMPTS)
-        val okCount = AtomicInteger(0)
+    fun `removeClaimed는 claimed에서 orderId를 제거하고 재고는 변경하지 않는다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val orderId = UUID.randomUUID()
+        gateway.decreaseAndClaim(ZONE_ID, orderId) // stock: 4, claimed: {orderId}
 
-        repeat(CONCURRENT_ATTEMPTS) {
-            pool.submit {
-                try {
-                    if (gateway.decreaseAndClaim(ZONE_ID, UUID.randomUUID()) == DecreaseResult.OK) {
-                        okCount.incrementAndGet()
-                    }
-                } finally {
-                    latch.countDown()
-                }
-            }
-        }
-        latch.await(AWAIT_SECONDS, TimeUnit.SECONDS)
-        pool.shutdown()
+        gateway.removeClaimed(ZONE_ID, orderId)
 
-        assertThat(okCount.get()).isEqualTo(INITIAL_STOCK)
-        assertThat(redis.opsForValue().get(stockKey)).isEqualTo("0")
-        assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(INITIAL_STOCK.toLong())
+        // 재고는 차감된 상태 그대로 (compensate와 달리 +1 없음)
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo((SMALL_STOCK - 1).toString())
+        // claimed에서는 제거됨
+        assertThat(redis.opsForSet().isMember(claimedKey, orderId.toString())).isEqualTo(false)
     }
+
+    @Test
+    fun `removeClaimed는 compensate와 달리 재고를 복구하지 않는다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val orderId = UUID.randomUUID()
+        gateway.decreaseAndClaim(ZONE_ID, orderId) // stock: SMALL_STOCK - 1
+
+        gateway.removeClaimed(ZONE_ID, orderId)
+
+        // compensate라면 SMALL_STOCK으로 복구되지만, removeClaimed는 그대로
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo((SMALL_STOCK - 1).toString())
+    }
+
+    @Test
+    fun `removeClaimed는 claimed에 없는 orderId에 대해 멱등하게 동작한다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val orderId = UUID.randomUUID()
+        // claimed에 추가하지 않음
+
+        // 예외 없이 정상 완료
+        gateway.removeClaimed(ZONE_ID, orderId)
+
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo(SMALL_STOCK.toString())
+        assertThat(redis.opsForSet().isMember(claimedKey, orderId.toString())).isEqualTo(false)
+    }
+
+    @Test
+    fun `removeClaimed를 2회 호출해도 재고에 영향이 없다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val orderId = UUID.randomUUID()
+        gateway.decreaseAndClaim(ZONE_ID, orderId)
+
+        gateway.removeClaimed(ZONE_ID, orderId)
+        gateway.removeClaimed(ZONE_ID, orderId) // 2회차 — 멱등
+
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo((SMALL_STOCK - 1).toString())
+        assertThat(redis.opsForSet().isMember(claimedKey, orderId.toString())).isEqualTo(false)
+    }
+
+    @Test
+    fun `removeClaimed는 다른 orderId는 claimed에서 제거하지 않는다`() {
+        redis.opsForValue().set(stockKey, SMALL_STOCK.toString())
+        val targetOrder = UUID.randomUUID()
+        val otherOrder = UUID.randomUUID()
+        gateway.decreaseAndClaim(ZONE_ID, targetOrder)
+        gateway.decreaseAndClaim(ZONE_ID, otherOrder)
+
+        gateway.removeClaimed(ZONE_ID, targetOrder)
+
+        assertThat(redis.opsForSet().isMember(claimedKey, targetOrder.toString())).isEqualTo(false)
+        assertThat(redis.opsForSet().isMember(claimedKey, otherOrder.toString())).isEqualTo(true)
+    }
+
+    // ── get / getAll / correctStock / rebuild / isClaimed ───────────────
 
     @Test
     fun `get은 키 존재 시 Int, 부재 시 null`() {
@@ -173,6 +214,54 @@ class StockRedisGatewayTest {
         assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(0L)
     }
 
+    @Test
+    fun `isClaimed는 orderId가 claimed 집합에 존재하면 true를 반환한다`() {
+        val orderId = UUID.randomUUID()
+        redis.opsForSet().add(claimedKey, orderId.toString())
+
+        val result = gateway.isClaimed(ZONE_ID, orderId)
+
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun `isClaimed는 orderId가 claimed 집합에 없으면 false를 반환한다`() {
+        val orderId = UUID.randomUUID()
+        // claimed 집합에 넣지 않음
+
+        val result = gateway.isClaimed(ZONE_ID, orderId)
+
+        assertThat(result).isFalse()
+    }
+
+    // ── concurrency ─────────────────────────────────────────────────────
+
+    @Test
+    fun `초기 100 동시 1000 차감 시 정확히 100건만 성공하고 최종 재고는 0`() {
+        redis.opsForValue().set(stockKey, INITIAL_STOCK.toString())
+        val pool = Executors.newFixedThreadPool(THREAD_POOL_SIZE)
+        val latch = CountDownLatch(CONCURRENT_ATTEMPTS)
+        val okCount = AtomicInteger(0)
+
+        repeat(CONCURRENT_ATTEMPTS) {
+            pool.submit {
+                try {
+                    if (gateway.decreaseAndClaim(ZONE_ID, UUID.randomUUID()) == DecreaseResult.OK) {
+                        okCount.incrementAndGet()
+                    }
+                } finally {
+                    latch.countDown()
+                }
+            }
+        }
+        latch.await(AWAIT_SECONDS, TimeUnit.SECONDS)
+        pool.shutdown()
+
+        assertThat(okCount.get()).isEqualTo(INITIAL_STOCK)
+        assertThat(redis.opsForValue().get(stockKey)).isEqualTo("0")
+        assertThat(redis.opsForSet().size(claimedKey)).isEqualTo(INITIAL_STOCK.toLong())
+    }
+
     companion object {
         private const val REDIS_PORT = 6379
         private const val ZONE_ID = 1L
@@ -182,31 +271,5 @@ class StockRedisGatewayTest {
         private const val CONCURRENT_ATTEMPTS = 1000
         private const val THREAD_POOL_SIZE = 32
         private const val AWAIT_SECONDS = 30L
-
-        @Container
-        @JvmStatic
-        val mysql =
-            MySQLContainer("mysql:9.7").apply {
-                withDatabaseName("snaptix")
-                withUsername("snaptix")
-                withPassword("snaptix1234")
-            }
-
-        @Container
-        @JvmStatic
-        val redisContainer =
-            GenericContainer("redis:8.8.0").apply {
-                withExposedPorts(REDIS_PORT)
-            }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun overrideProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-            registry.add("spring.data.redis.host", redisContainer::getHost)
-            registry.add("spring.data.redis.port") { redisContainer.getMappedPort(REDIS_PORT) }
-        }
     }
 }

@@ -53,6 +53,13 @@ alert:
   throttle:
     window-seconds: 300
 
+event:
+    cleanup:
+        cron: "0 0 * * * *"   # 고아 키 스윕 1시간 주기 (백스톱)
+        window: 1d            # 대상 = CLOSED & updated_at >= now - window (다운타임 커버)
+        ttl: 1h               # CLOSED 정리 시 claimed/stock 백스톱 TTL (자가 만료)
+        ttl-jitter: 0.1       # TTL ±10% 지터 (동시 만료 snowstorm 분산)
+
 # Rebuild & Reconcile (Epic 13)
 reconcile:
   hold-window: 5m          # 유효 점유 홀드 윈도우 (cutoff = now - holdWindow)
@@ -101,3 +108,24 @@ snaptix:
       order-pending: 2m
       rate-limit-second: 1s
       rate-limit-minute: 60s
+
+payment:
+  mock:
+    webhook:
+      secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}
+
+order:
+  stream:
+    consumer-group: order-workers
+    trim:
+      enabled: true
+      fixed-delay: 3m
+  consumer:
+    claim-idle-ms: 30000   # PEL 회수 기준 유휴 시간 (p99 처리시간보다 크게)
+    claim-schedule-ms: 10000  # 회수 스케줄 주기
+  hold:
+      timeout-minutes: 5                  # ORDER_HOLD TTL 기준 (snaptix.redis.ttl.order-hold 와 일치)
+      scheduler-fixed-delay-ms: 60000    # 배치 주기 — 1분 (fixedDelay: 이전 실행 완료 후 대기)
+      batch-size: 100                     # 단일 배치 최대 처리 건수 (대량 만료 방어)
+      keyspace-listener:
+          enabled: false

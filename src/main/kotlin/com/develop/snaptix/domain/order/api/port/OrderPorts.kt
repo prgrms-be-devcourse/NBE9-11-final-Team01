@@ -8,6 +8,7 @@ fun interface OrderIngestPort {
     fun ingest(
         userId: Long,
         request: OrderRequest,
+        ip: String,
     ): OrderAcceptedResponse
 }
 
