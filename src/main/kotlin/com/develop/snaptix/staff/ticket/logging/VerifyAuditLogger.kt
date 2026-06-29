@@ -5,7 +5,6 @@ import org.springframework.stereotype.Component
 
 @Component
 class VerifyAuditLogger {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun verifyFailed(
