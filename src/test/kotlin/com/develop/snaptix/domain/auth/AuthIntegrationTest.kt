@@ -161,6 +161,46 @@ class AuthIntegrationTest(
             }.andExpect {
                 status { isConflict() }
                 jsonPath("$.code") { value(ErrorCode.DUPLICATE_EMAIL.code) }
+                jsonPath("$.message") { value(ErrorCode.DUPLICATE_EMAIL.message) }
+            }
+    }
+
+    @Test
+    fun `회원가입 이메일 형식이 올바르지 않으면 400을 반환한다`() {
+        mockMvc
+            .post("/api/v1/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"invalid-email","password":"$TEST_PASSWORD"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+                jsonPath("$.errors[0].field") { value("email") }
+            }
+    }
+
+    @Test
+    fun `회원가입 비밀번호가 8자 미만이면 400을 반환한다`() {
+        mockMvc
+            .post("/api/v1/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"short-password@example.com","password":"Pass1!"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+                jsonPath("$.errors[0].field") { value("password") }
+            }
+    }
+
+    @Test
+    fun `회원가입 비밀번호에 특수문자가 없으면 400을 반환한다`() {
+        mockMvc
+            .post("/api/v1/auth/signup") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"email":"invalid-password@example.com","password":"SecurePass123"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+                jsonPath("$.errors[0].field") { value("password") }
             }
     }
 
