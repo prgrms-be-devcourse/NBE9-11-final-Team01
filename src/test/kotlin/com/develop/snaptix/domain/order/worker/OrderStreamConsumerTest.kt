@@ -144,7 +144,7 @@ class OrderStreamConsumerTest {
 
         @Test
         @Timeout(value = 3, unit = TimeUnit.SECONDS)
-        @DisplayName("정상 처리 및 XACK 완료 시 ticketing.order.xack.count 가 1 증가한다")
+        @DisplayName("정상 처리 및 XACK 완료 시 snaptix.order.xack.count 가 1 증가한다")
         fun xackCountIncrementedOnSuccess() {
             // Arrange
             mockLoopToRunOnce(eventId)
@@ -156,7 +156,7 @@ class OrderStreamConsumerTest {
             awaitConsumerStop()
 
             // Assert
-            assertThat(meterRegistry.counter("ticketing.order.xack.count").count())
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count())
                 .isEqualTo(1.0)
         }
 
@@ -183,7 +183,7 @@ class OrderStreamConsumerTest {
 
         @Test
         @Timeout(value = 3, unit = TimeUnit.SECONDS)
-        @DisplayName("터미널 예외 시 gateway.ack 는 호출되지만 ticketing.order.xack.count 는 증가하지 않는다")
+        @DisplayName("터미널 예외 시 gateway.ack 는 호출되지만 snaptix.order.xack.count 는 증가하지 않는다")
         fun xackCountNotIncrementedOnTerminalError() {
             // Arrange
             mockLoopToRunOnce(eventId)
@@ -197,7 +197,7 @@ class OrderStreamConsumerTest {
 
             // Assert: 찌꺼기 ACK는 호출되지만 정상 처리 메트릭은 미증가
             verify(exactly = 1) { orderStreamGateway.ack(eventId, CONSUMER_GROUP, streamMessageId) }
-            assertThat(meterRegistry.counter("ticketing.order.xack.count").count()).isZero()
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count()).isZero()
         }
 
         @Test
@@ -223,7 +223,7 @@ class OrderStreamConsumerTest {
 
         @Test
         @Timeout(value = 3, unit = TimeUnit.SECONDS)
-        @DisplayName("비터미널 예외 시 ticketing.order.xack.count 가 증가하지 않는다")
+        @DisplayName("비터미널 예외 시 snaptix.order.xack.count 가 증가하지 않는다")
         fun xackCountNotIncrementedOnNonTerminalError() {
             // Arrange
             mockLoopToRunOnce(eventId)
@@ -236,7 +236,7 @@ class OrderStreamConsumerTest {
             awaitConsumerStop()
 
             // Assert
-            assertThat(meterRegistry.counter("ticketing.order.xack.count").count()).isZero()
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count()).isZero()
         }
 
         @Test

@@ -371,11 +371,11 @@ class OrphanReclaimerTest : IntegrationTestSupport() {
         .pending(keys.queueOrder(eventId), CONSUMER_GROUP)
         .totalPendingMessages
 
-    private fun reprocessCount(): Double = meterRegistry.counter("ticketing.order.claim.reprocess.count").count()
+    private fun reprocessCount(): Double = meterRegistry.counter("snaptix.order.claim.reprocess.count").count()
 
-    private fun deletedCount(): Double = meterRegistry.counter("ticketing.stream.deleted.count").count()
+    private fun deletedCount(): Double = meterRegistry.counter("snaptix.stream.deleted.count").count()
 
-    private fun pendingSize(): Double = meterRegistry.find("ticketing.stream.pending.size").gauge()?.value() ?: 0.0
+    private fun pendingSize(): Double = meterRegistry.find("snaptix.stream.pending.size").gauge()?.value() ?: 0.0
 
     /** 필수 필드가 없는 잘못된 payload를 스트림에 직접 주입한다. */
     private fun addInvalidPayload(eventId: UUID) {
