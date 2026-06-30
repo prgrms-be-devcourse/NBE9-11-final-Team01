@@ -34,6 +34,14 @@ import java.util.UUID
  * 4. 발권 완료된 orderId 조회 시 ticketCode 반환
  * 5. 발권 전 orderId 조회 시 null 반환
  * 6. 존재하지 않는 orderId 조회 시 null 반환
+ *
+ * ### findByTicketCode()
+ * 7. 존재하는 ticketCode 조회 시 TicketRecord 반환 (status, reservationId, issuedAt 포함)
+ * 8. 존재하지 않는 ticketCode 조회 시 null 반환
+ *
+ * ### findById()
+ * 9. 존재하는 id 조회 시 TicketRecord 반환 (id, ticketCode, status 포함)
+ * 10. 존재하지 않는 id 조회 시 null 반환
  */
 @SpringBootTest
 @DisplayName("TicketRepository 통합 테스트")
@@ -141,6 +149,66 @@ class TicketRepositoryTest : IntegrationTestSupport() {
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // findByTicketCode() — ticketCode → TicketRecord 조회
+    // ════════════════════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("findByTicketCode() — ticketCode → TicketRecord 조회")
+    inner class FindByTicketCode {
+        @Test
+        @DisplayName("존재하는 ticketCode 조회 시 TicketRecord를 반환한다")
+        fun `returns TicketRecord when ticketCode exists`() {
+            val ticketCode = sut.issue(reservationId)
+
+            val result = sut.findByTicketCode(ticketCode)
+
+            assertThat(result).isNotNull()
+            assertThat(result!!.ticketCode).isEqualTo(ticketCode)
+            assertThat(result.status).isEqualTo(TicketStatus.ISSUED.name)
+            assertThat(result.reservationId).isEqualTo(reservationId)
+            assertThat(result.issuedAt).isNotNull()
+            assertThat(result.usedAt).isNull()
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 ticketCode 조회 시 null을 반환한다")
+        fun `returns null when ticketCode does not exist`() {
+            val result = sut.findByTicketCode("non-existent-ticket-code")
+
+            assertThat(result).isNull()
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // findById() — id → TicketRecord 조회
+    // ════════════════════════════════════════════════════════════════════════════
+    @Nested
+    @DisplayName("findById() — id → TicketRecord 조회")
+    inner class FindById {
+        @Test
+        @DisplayName("존재하는 id 조회 시 TicketRecord를 반환한다")
+        fun `returns TicketRecord when id exists`() {
+            val ticketCode = sut.issue(reservationId)
+            val ticketId = findIdByTicketCode(ticketCode)!!
+
+            val result = sut.findById(ticketId)
+
+            assertThat(result).isNotNull()
+            assertThat(result!!.id).isEqualTo(ticketId)
+            assertThat(result.ticketCode).isEqualTo(ticketCode)
+            assertThat(result.status).isEqualTo(TicketStatus.ISSUED.name)
+            assertThat(result.reservationId).isEqualTo(reservationId)
+        }
+
+        @Test
+        @DisplayName("존재하지 않는 id 조회 시 null을 반환한다")
+        fun `returns null when id does not exist`() {
+            val result = sut.findById(Long.MAX_VALUE)
+
+            assertThat(result).isNull()
+        }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
     private fun findStatusByTicketCode(ticketCode: String): String? = transaction {
@@ -165,5 +233,13 @@ class TicketRepositoryTest : IntegrationTestSupport() {
             .where { TicketsTable.ticketCode eq ticketCode }
             .singleOrNull()
             ?.get(TicketsTable.reservationId)
+    }
+
+    private fun findIdByTicketCode(ticketCode: String): Long? = transaction {
+        TicketsTable
+            .selectAll()
+            .where { TicketsTable.ticketCode eq ticketCode }
+            .singleOrNull()
+            ?.get(TicketsTable.id)
     }
 }
