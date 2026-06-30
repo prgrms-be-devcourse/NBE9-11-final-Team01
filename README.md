@@ -6,7 +6,7 @@
 
 ## 코드 품질 도구
 
-이 프로젝트는 **ktlint**와 **detekt**를 사용하여 코드 스타일과 정적 분석을 관리합니다.
+이 프로젝트는 **ktlint**, **detekt**, **Kover**를 사용하여 코드 스타일, 정적 분석, 테스트 커버리지를 관리합니다.
 
 ---
 
@@ -33,16 +33,6 @@ Kotlin 공식 코딩 컨벤션 기반의 코드 스타일 검사 도구입니다
 - 불필요한 세미콜론 금지
 - import 와일드카드 금지
 
-#### IntelliJ 연동
-
-ktlint 규칙을 IDE에 자동 적용하려면 아래 명령어로 IntelliJ 설정 파일을 생성합니다.
-
-```bash
-./gradlew ktlintApplyToIdea
-```
-
----
-
 ### detekt
 
 Kotlin 정적 분석 도구로 복잡도, 잠재적 버그, 코드 스타일 등을 검사합니다.
@@ -52,12 +42,6 @@ Kotlin 정적 분석 도구로 복잡도, 잠재적 버그, 코드 스타일 등
 ```bash
 # 전체 소스 분석
 ./gradlew detekt
-
-# main 소스만 분석
-./gradlew detektMain
-
-# test 소스만 분석
-./gradlew detektTest
 ```
 
 #### 설정 파일
@@ -98,13 +82,49 @@ fun someFunction(a: String, b: String, c: String, d: String, e: String, f: Strin
 
 ---
 
+### Kover (테스트 커버리지)
+
+JetBrains 공식 Kotlin 커버리지 도구입니다. Kotlin의 data class, lambda, inline function 등에서 발생하는 JaCoCo 집계 오차를 방지하기 위해 사용합니다.
+
+#### 명령어
+
+```bash
+# HTML 리포트 생성
+./gradlew koverHtmlReport
+```
+
+```bash
+# 커버리지 기준 검증 (80% 미달 시 빌드 실패)
+./gradlew koverVerify
+```
+
+#### 리포트
+
+리포트는 `build/reports/kover/html/` 에 생성됩니다. `index.html`을 브라우저에서 열면 패키지별 상세 커버리지를 확인할 수 있습니다.
+
+#### 커버리지 기준 및 제외 대상
+
+최소 커버리지 기준은 **라인 80%** 이며, 아래 패키지는 측정에서 제외됩니다.
+
+| 제외 패턴 | 이유 |
+|---|---|
+| `*.config.*` | 설정 클래스 |
+| `*.dto.*` | 데이터 전달 객체 |
+| `*Application*` | 애플리케이션 진입점 |
+| `*.exception.*` | 예외 정의 클래스 |
+| `com.develop.snaptix.staff.*` | deprecated 예정 모듈 |
+
+> 패키지별 커버리지 현황은 [COVERAGE.md](./COVERAGE.md)를 참고하세요.
+
+---
+
 ### CI/CD 연동
 
-PR 생성 시 GitHub Actions에서 ktlint와 detekt가 자동으로 실행됩니다.
-두 검사 중 하나라도 실패하면 PR 머지가 차단됩니다.
+PR 생성 시 GitHub Actions에서 ktlint, detekt, Kover가 자동으로 실행됩니다.
+세 검사 중 하나라도 실패하면 PR 머지가 차단됩니다.
 
 로컬에서 PR 전에 미리 확인하려면:
 
 ```bash
-./gradlew ktlintCheck detekt
+./gradlew ktlintCheck detekt koverVerify
 ```
