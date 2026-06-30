@@ -94,6 +94,11 @@ class EventDetailIntegrationTest(
     }
 
     @Test
+    fun `UUID 형식이 아닌 이벤트 상세 조회는 404를 응답한다`() {
+        assertEventNotFound("invalid-event-id")
+    }
+
+    @Test
     fun `Redis 재고 키가 있으면 currentStock에 반영한다`() {
         val event = insertEventWithZones()
         redisTemplate.opsForValue().set("ZONE:${event.zones[0].id}:stock", "57")

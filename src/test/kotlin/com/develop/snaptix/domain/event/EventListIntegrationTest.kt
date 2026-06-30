@@ -299,6 +299,7 @@ class EventListIntegrationTest(
 
     @Test
     fun `쿼리 파라미터 검증에 실패하면 400을 응답한다`() {
+        assertValidationFailed("size", "0")
         assertValidationFailed("size", "51")
         assertValidationFailed("page", "1001")
         assertValidationFailed("page", "-1")
