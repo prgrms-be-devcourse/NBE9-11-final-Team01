@@ -160,7 +160,7 @@ class ReservationRepository : ReservationQuery {
 
     /**
      * zoneId → 유효 점유 수. **희소(sparse) Map** — 점유가 0인 zone은 키가 없다.
-     * 계약: 정산 기준은 항상 이벤트의 **전체 zone 집합**(ZoneRepository.findByEventId)이며,
+     * 계약: 정산 기준은 항상 이벤트의 **전체 zone 집합**이며,
      *      소비자는 zone 집합을 순회하며 `map[zoneId] ?: 0`으로 조회한다.
      *      또한 본 메서드는 **호출자의 스냅샷 트랜잭션 안에서** 호출되어야 한다(일관 스냅샷, Story 13.2/13.4).
      * TODO(#146): zoneId만 projection 후 코틀린 카운트 → SQL `COUNT(*) GROUP BY zone_id`로 전환.
