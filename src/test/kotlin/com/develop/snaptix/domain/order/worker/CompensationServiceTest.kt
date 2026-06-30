@@ -54,7 +54,7 @@ class CompensationServiceTest : IntegrationTestSupport() {
         // 공유 MeterRegistry 누적 방어: 시작 시점의 카운터 값을 기록
         initialCompensateCount =
             meterRegistry
-                .find("ticketing.stock.compensate.count")
+                .find("snaptix.stock.compensate.count")
                 .counter()
                 ?.count() ?: 0.0
     }
@@ -155,7 +155,7 @@ class CompensationServiceTest : IntegrationTestSupport() {
      */
     private fun compensateDelta(): Double = (
         meterRegistry
-            .find("ticketing.stock.compensate.count")
+            .find("snaptix.stock.compensate.count")
             .counter()
             ?.count() ?: 0.0
     ) - initialCompensateCount
