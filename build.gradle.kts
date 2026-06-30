@@ -9,6 +9,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
     id("dev.detekt") version "2.0.0-alpha.3"
+    id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "com.develop"
@@ -132,4 +133,25 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    // 커버리지 제외할 클래스 패턴
+                    "*.config.*",
+                    "*.dto.*",
+                    "*Application*",
+                    "*.exception.*",
+                )
+            }
+        }
+        verify {
+            rule {
+                minBound(70)
+            }
+        }
+    }
 }
