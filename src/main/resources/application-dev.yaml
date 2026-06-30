@@ -3,5 +3,5 @@ logging:
     root: INFO
     com.develop.snaptix: INFO
 app:
-    cookie:
-        secure: true
+  cookie:
+    secure: true
