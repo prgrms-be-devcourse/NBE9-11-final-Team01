@@ -87,6 +87,20 @@ class EventBulkCreateIntegrationTest(
     }
 
     @Test
+    fun `인증 없이 이벤트와 구역을 등록할 수 없다`() {
+        mockMvc
+            .post("/api/v1/admin/events") {
+                contentType = MediaType.APPLICATION_JSON
+                content = createRequest()
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+            }
+
+        assertEventAndZoneTablesAreEmpty()
+    }
+
+    @Test
     fun `USER 권한은 이벤트와 구역을 등록할 수 없다`() {
         mockMvc
             .post("/api/v1/admin/events") {

@@ -106,6 +106,22 @@ class EventStatusUpdateIntegrationTest(
     }
 
     @Test
+    fun `인증 없이 이벤트 상태를 변경할 수 없다`() {
+        val eventId = insertEvent(status = EventStatus.PENDING)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"ON_SALE"}"""
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
+    }
+
+    @Test
     fun `USER 권한은 이벤트 상태를 변경할 수 없다`() {
         val eventId = insertEvent(status = EventStatus.PENDING)
 
