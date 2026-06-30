@@ -118,6 +118,81 @@ JetBrains 공식 Kotlin 커버리지 도구입니다. Kotlin의 data class, lamb
 
 ---
 
+## 부하 테스트 (k6)
+
+선착순 티켓팅 시나리오를 k6로 부하 테스트합니다. `loadtest` 프로파일로 앱을 기동하면 **시드 데이터가 자동으로 생성**되며, 별도 shell 스크립트 없이 k6를 실행할 수 있습니다.
+
+---
+
+### 사전 조건
+
+| 도구 | 설치 |
+|---|---|
+| Docker | [docker.com](https://www.docker.com/) |
+| k6 | [k6.io/docs/get-started/installation](https://k6.io/docs/get-started/installation/) |
+
+`application-secret.yml`에 JWT 시크릿이 설정되어 있어야 합니다.
+
+```yaml
+# application-secret.yml
+jwt:
+  secret: <32자 이상의 시크릿 키>
+```
+
+---
+
+### 실행 방법
+
+#### 1단계 — 컨테이너 기동
+
+```bash
+docker compose -f docker-compose.loadtest.yml up -d
+```
+
+#### 2단계 — 앱 기동 (`loadtest` 프로파일)
+
+```bash
+SPRING_PROFILES_ACTIVE=loadtest ./gradlew bootRun
+```
+
+앱 기동 시 `LoadTestDataInitializer`가 자동으로 아래를 수행합니다.
+
+| 작업 | 내용 |
+|---|---|
+| 어드민 생성 | `admin@snaptix.kr / Admin1234!` (멱등) |
+| 테스트 유저 생성 | `load-user-1~200@test.com / Test1234!` 200명 (멱등) |
+| 이벤트 생성 | `Load Test Event` — 구역 1개, 재고 100석 |
+| 상태 전환 | `PENDING` → `ON_SALE` |
+| 파일 출력 | `loadtest/seed/.env`, `loadtest/seed/users.json` |
+
+기동 완료 로그에서 시드 결과를 확인할 수 있습니다.
+
+```
+[LOADTEST]  EVENT_ID        = <uuid>
+[LOADTEST]  ZONE_ID         = <uuid>
+[LOADTEST]  REDIS_STOCK_KEY = ZONE:<id>:stock
+```
+
+#### 3단계 — k6 실행
+
+```bash
+source loadtest/seed/.env
+k6 run loadtest/main.js
+```
+
+---
+
+### 생성 파일
+
+앱 기동 후 아래 파일이 자동 생성됩니다. **커밋하지 마세요.**
+
+| 파일 | 내용 |
+|---|---|
+| `loadtest/seed/.env` | `EVENT_ID`, `ZONE_ID`, `REDIS_STOCK_KEY` |
+| `loadtest/seed/users.json` | k6에서 사용할 유저 목록 (이메일 / 패스워드) |
+
+> `loadtest/seed/.gitignore`에 `.env`와 `users.json`이 포함되어 있는지 확인하세요.
+
 ### CI/CD 연동
 
 PR 생성 시 GitHub Actions에서 ktlint, detekt, Kover가 자동으로 실행됩니다.
