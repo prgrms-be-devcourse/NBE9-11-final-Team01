@@ -11,6 +11,7 @@ import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import com.develop.snaptix.support.IntegrationTestSupport
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.matchesPattern
 import org.hamcrest.Matchers.not
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -25,6 +26,8 @@ import org.springframework.test.web.servlet.get
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+
+private const val UUID_REGEX = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -53,6 +56,7 @@ class EventDetailIntegrationTest(
             .andExpect {
                 status { isOk() }
                 jsonPath("$.eventId") { value(event.publicId) }
+                jsonPath("$.eventId") { value(matchesPattern(UUID_REGEX)) }
                 jsonPath("$.eventId") { value(not(event.id.toString())) }
                 jsonPath("$.name") { value("2027 SnapTix Concert") }
                 jsonPath("$.description") { value("인기 아티스트 콘서트입니다.") }
@@ -63,12 +67,14 @@ class EventDetailIntegrationTest(
                 jsonPath("$.status") { value("ON_SALE") }
                 jsonPath("$.zones.length()") { value(2) }
                 jsonPath("$.zones[0].zoneId") { value(event.zones[0].publicId) }
+                jsonPath("$.zones[0].zoneId") { value(matchesPattern(UUID_REGEX)) }
                 jsonPath("$.zones[0].zoneId") { value(not(event.zones[0].id.toString())) }
                 jsonPath("$.zones[0].name") { value("VIP") }
                 jsonPath("$.zones[0].unitPrice") { value(150_000) }
                 jsonPath("$.zones[0].totalCapacity") { value(100) }
                 jsonPath("$.zones[0].currentStock") { value(100) }
                 jsonPath("$.zones[1].zoneId") { value(event.zones[1].publicId) }
+                jsonPath("$.zones[1].zoneId") { value(matchesPattern(UUID_REGEX)) }
                 jsonPath("$.zones[1].zoneId") { value(not(event.zones[1].id.toString())) }
                 jsonPath("$.zones[1].name") { value("A") }
                 jsonPath("$.zones[1].unitPrice") { value(90_000) }
