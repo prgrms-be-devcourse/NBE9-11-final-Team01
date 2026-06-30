@@ -24,6 +24,10 @@ spring:
 server:
   port: 8080
 
+app:
+    cookie:
+        secure: false
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -81,20 +85,6 @@ management:
     tags:
       application: snaptix
       env: ${spring.profiles.active}
-
-custom:
-  dev:
-    domain: localhost
-    backUrl: "http://${custom.dev.domain}:${server.port}"
-    frontUrl: "http://${custom.dev.domain}:3000"
-  prod:
-    domain: edge.example-test-domain11.shop
-    backUrl: "https://${custom.prod.domain}"
-    frontUrl: "https://<프런트-호스팅-주소>"     # CORS 허용 origin
-  site:                                          # 기본 dev, prod 프로파일에서 override
-    domain: "${custom.dev.domain}"
-    backUrl: "${custom.dev.backUrl}"
-    frontUrl: "${custom.dev.frontUrl}"
 
 realtime:
   sse:

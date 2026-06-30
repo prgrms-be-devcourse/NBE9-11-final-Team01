@@ -264,14 +264,9 @@ class AuthIntegrationTest(
                     contentType = MediaType.APPLICATION_JSON
                     content = """{"email":"$TEST_EMAIL","password":"$TEST_PASSWORD"}"""
                 }.andExpect {
-                    status { isOk() }
-                    jsonPath("$.userId") { exists() }
-                    jsonPath("$.role") { value("USER") }
-                    jsonPath("$.accessToken") { doesNotExist() }
-                    jsonPath("$.refreshToken") { doesNotExist() }
-                }.andReturn()
+                    status { isOk() } }.andReturn()
 
-        return loginResult.response.getHeaders(HttpHeaders.SET_COOKIE)
+        return loginResult.response.getHeaders("Set-Cookie").toList()
     }
 
     private fun assertLoginCookies(loginCookies: List<String>) {

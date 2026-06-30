@@ -30,7 +30,7 @@ class AuthControllerTest {
             accessTokenExpirationSeconds = 600
             refreshTokenExpirationSeconds = 604_800
         }
-    private val cookieProvider = CookieProvider(jwtProperties)
+    private val cookieProvider = CookieProvider(cookieSecure = false, jwtProperties)
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach

@@ -9,4 +9,5 @@ class JwtProperties {
     lateinit var secret: String
     var accessTokenExpirationSeconds: Long = 600
     var refreshTokenExpirationSeconds: Long = 604_800
+    val cookieSecure: Boolean = false
 }

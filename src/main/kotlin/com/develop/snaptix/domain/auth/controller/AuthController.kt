@@ -111,10 +111,14 @@ class AuthController(
         val accessTokenCookie = cookieProvider.createAccessTokenCookie(result.accessToken)
         val refreshTokenCookie = cookieProvider.createRefreshTokenCookie(result.refreshToken)
 
+        // 👇 명시적으로 HttpHeaders 객체 생성 후 add() 사용
+        val headers = HttpHeaders()
+        headers.add(HttpHeaders.SET_COOKIE, accessTokenCookie.toString())
+        headers.add(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+
         return ResponseEntity
             .ok()
-            .header(HttpHeaders.SET_COOKIE, accessTokenCookie.toString())
-            .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+            .headers(headers)
             .body(result.response)
     }
 
@@ -142,10 +146,13 @@ class AuthController(
         val accessTokenCookie = cookieProvider.expireAccessTokenCookie()
         val refreshTokenCookie = cookieProvider.expireRefreshTokenCookie()
 
+        val headers = HttpHeaders()
+        headers.add(HttpHeaders.SET_COOKIE, accessTokenCookie.toString())
+        headers.add(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+
         return ResponseEntity
             .ok()
-            .header(HttpHeaders.SET_COOKIE, accessTokenCookie.toString())
-            .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+            .headers(headers)
             .body(LogoutResponse(LOGOUT_SUCCESS_MESSAGE))
     }
 }
