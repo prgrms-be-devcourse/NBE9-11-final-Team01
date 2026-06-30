@@ -1,7 +1,7 @@
 logging:
   level:
     root: INFO
-    com.back: INFO
+    com.develop.snaptix: INFO
 app:
     cookie:
         secure: true
