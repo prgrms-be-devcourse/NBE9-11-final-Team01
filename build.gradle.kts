@@ -145,6 +145,7 @@ kover {
                     "*.dto.*",
                     "*Application*",
                     "*.exception.*",
+                    "*.loadtest.*",
                 )
             }
         }

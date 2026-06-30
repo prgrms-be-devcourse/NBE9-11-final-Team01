@@ -1,0 +1,33 @@
+name: snaptix-loadtest
+
+# dev 환경(docker-compose.yml)과 포트 충돌 없이 병렬 기동 가능
+# MySQL : 3307, Redis : 6380
+services:
+    mysql-loadtest:
+        image: mysql:9.7
+        container_name: snaptix-mysql-loadtest
+        ports:
+            - "3307:3306"
+        environment:
+            MYSQL_ROOT_PASSWORD: root1234
+            MYSQL_DATABASE: snaptix
+            MYSQL_USER: snaptix
+            MYSQL_PASSWORD: snaptix1234
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "snaptix", "-psnaptix1234"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 20s
+
+    redis-loadtest:
+        image: redis:8.8.0
+        container_name: snaptix-redis-loadtest
+        ports:
+            - "6380:6379"
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+            start_period: 5s

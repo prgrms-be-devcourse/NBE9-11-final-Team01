@@ -5,7 +5,7 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
     <!-- 개발 환경: 텍스트 출력 (MDC 필드 포함) -->
-    <springProfile name="default, local">
+    <springProfile name="default, local, loadtest">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
                 <!-- #14: userId/eventId/zoneId/action/result MDC 필드 패턴에 포함 -->
