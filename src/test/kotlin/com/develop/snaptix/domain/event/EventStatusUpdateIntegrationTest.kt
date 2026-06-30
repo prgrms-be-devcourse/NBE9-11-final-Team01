@@ -106,6 +106,22 @@ class EventStatusUpdateIntegrationTest(
     }
 
     @Test
+    fun `인증 없이 이벤트 상태를 변경할 수 없다`() {
+        val eventId = insertEvent(status = EventStatus.PENDING)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"ON_SALE"}"""
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.PENDING.name)
+    }
+
+    @Test
     fun `USER 권한은 이벤트 상태를 변경할 수 없다`() {
         val eventId = insertEvent(status = EventStatus.PENDING)
 
@@ -186,6 +202,17 @@ class EventStatusUpdateIntegrationTest(
             }
 
         assertThat(findEventStatus(eventId)).isEqualTo(EventStatus.SOLD_OUT.name)
+    }
+
+    @Test
+    fun `허용되지 않는 상태 전이 조합은 이벤트 상태를 변경하지 않는다`() {
+        listOf(
+            EventStatus.PENDING to EventStatus.SOLD_OUT,
+            EventStatus.CLOSED to EventStatus.ON_SALE,
+            EventStatus.CLOSED to EventStatus.SOLD_OUT,
+        ).forEach { (currentStatus, nextStatus) ->
+            assertStatusTransitionFails(currentStatus, nextStatus)
+        }
     }
 
     @Test
@@ -415,6 +442,25 @@ class EventStatusUpdateIntegrationTest(
         allKeys.forEach { key ->
             assertThat(redisTemplate.hasKey(key)).isFalse()
         }
+    }
+
+    private fun assertStatusTransitionFails(
+        currentStatus: EventStatus,
+        nextStatus: EventStatus,
+    ) {
+        val eventId = insertEvent(status = currentStatus)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"${nextStatus.name}"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(currentStatus.name)
     }
 
     private fun insertEvent(status: EventStatus): String = insertEvent(status = status.name)

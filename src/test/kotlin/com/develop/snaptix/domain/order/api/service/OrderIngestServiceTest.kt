@@ -113,11 +113,11 @@ class OrderIngestServiceTest {
         }
 
         @Test
-        @DisplayName("XADD 성공 시 ticketing.order.queue.size 카운터가 1 증가한다")
+        @DisplayName("XADD 성공 시 snaptix.order.queue.size 카운터가 1 증가한다")
         fun `increments queue size counter on successful XADD`() {
             sut.ingest(userId, request, ip)
 
-            assertThat(meterRegistry.counter("ticketing.order.queue.size").count())
+            assertThat(meterRegistry.counter("snaptix.order.queue.size").count())
                 .isEqualTo(1.0)
         }
     }
@@ -375,11 +375,11 @@ class OrderIngestServiceTest {
         }
 
         @Test
-        @DisplayName("XADD 실패 시 ticketing.order.queue.size 카운터가 증가하지 않는다")
+        @DisplayName("XADD 실패 시 snaptix.order.queue.size 카운터가 증가하지 않는다")
         fun `does not increment queue size counter when XADD fails`() {
             runCatching { sut.ingest(userId, request, ip) }
 
-            assertThat(meterRegistry.counter("ticketing.order.queue.size").count()).isZero()
+            assertThat(meterRegistry.counter("snaptix.order.queue.size").count()).isZero()
         }
     }
 

@@ -9,6 +9,7 @@ import com.develop.snaptix.support.IntegrationTestSupport
 import jakarta.servlet.http.Cookie
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.jdbc.deleteAll
+import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -19,6 +20,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -29,6 +31,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 
 private const val TEST_EMAIL = "integration-login@example.com"
+private const val ADMIN_EMAIL = "integration-admin@example.com"
 private const val TEST_PASSWORD = "SecurePass123!"
 private const val PROTECTED_RESPONSE = "authenticated"
 
@@ -37,6 +40,7 @@ private const val PROTECTED_RESPONSE = "authenticated"
 class AuthIntegrationTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val jwtProperties: JwtProperties,
+    @Autowired private val passwordEncoder: PasswordEncoder,
 ) : IntegrationTestSupport() {
     @TestConfiguration
     class TestProtectedControllerConfig {
@@ -97,6 +101,28 @@ class AuthIntegrationTest(
                 status { isOk() }
                 content { string(PROTECTED_RESPONSE) }
             }
+    }
+
+    @Test
+    fun `ADMIN 계정으로 로그인하면 ADMIN role과 JWT 쿠키가 발급된다`() {
+        insertUser(email = ADMIN_EMAIL, password = TEST_PASSWORD, role = UserRole.ADMIN)
+
+        val loginResult =
+            mockMvc
+                .post("/api/v1/auth/login") {
+                    contentType = MediaType.APPLICATION_JSON
+                    content = """{"email":"$ADMIN_EMAIL","password":"$TEST_PASSWORD"}"""
+                }.andExpect {
+                    status { isOk() }
+                    jsonPath("$.userId") { exists() }
+                    jsonPath("$.role") { value("ADMIN") }
+                    jsonPath("$.accessToken") { doesNotExist() }
+                    jsonPath("$.refreshToken") { doesNotExist() }
+                }.andReturn()
+
+        val loginCookies = loginResult.response.getHeaders(HttpHeaders.SET_COOKIE)
+
+        assertLoginCookies(loginCookies)
     }
 
     @Test
@@ -337,6 +363,25 @@ class AuthIntegrationTest(
                 jsonPath("$.message") { value(ErrorCode.UNAUTHORIZED.message) }
                 jsonPath("$.errors") { value(null) }
             }
+    }
+
+    private fun insertUser(
+        email: String,
+        password: String,
+        role: UserRole,
+    ) {
+        val encodedPassword =
+            requireNotNull(passwordEncoder.encode(password)) {
+                "PasswordEncoder returned null"
+            }
+
+        transaction {
+            UsersTable.insert {
+                it[UsersTable.email] = email
+                it[UsersTable.password] = encodedPassword
+                it[UsersTable.role] = role.name
+            }
+        }
     }
 
     private fun List<String>.toRequestCookie(name: String): Cookie {

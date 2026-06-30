@@ -9,6 +9,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
     id("dev.detekt") version "2.0.0-alpha.3"
+    id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "com.develop"
@@ -100,9 +101,6 @@ dependencies {
     implementation("io.github.oshai:kotlin-logging-jvm:8.0.4")
     implementation("net.logstash.logback:logstash-logback-encoder:9.0")
 
-    // Observability — Prometheus (Story 14.1 / #14)
-    implementation("io.micrometer:micrometer-registry-prometheus")
-
     // OpenAPI
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0")
 
@@ -135,4 +133,25 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    // 커버리지 제외할 클래스 패턴
+                    "*.config.*",
+                    "*.dto.*",
+                    "*Application*",
+                    "*.exception.*",
+                )
+            }
+        }
+        verify {
+            rule {
+                minBound(70)
+            }
+        }
+    }
 }
