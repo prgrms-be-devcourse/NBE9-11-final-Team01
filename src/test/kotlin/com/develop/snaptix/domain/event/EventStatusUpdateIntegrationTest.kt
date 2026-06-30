@@ -189,6 +189,17 @@ class EventStatusUpdateIntegrationTest(
     }
 
     @Test
+    fun `허용되지 않는 상태 전이 조합은 이벤트 상태를 변경하지 않는다`() {
+        listOf(
+            EventStatus.PENDING to EventStatus.SOLD_OUT,
+            EventStatus.CLOSED to EventStatus.ON_SALE,
+            EventStatus.CLOSED to EventStatus.SOLD_OUT,
+        ).forEach { (currentStatus, nextStatus) ->
+            assertStatusTransitionFails(currentStatus, nextStatus)
+        }
+    }
+
+    @Test
     fun `변경할 이벤트 상태가 없으면 실패한다`() {
         val eventId = insertEvent(status = EventStatus.PENDING)
 
@@ -415,6 +426,25 @@ class EventStatusUpdateIntegrationTest(
         allKeys.forEach { key ->
             assertThat(redisTemplate.hasKey(key)).isFalse()
         }
+    }
+
+    private fun assertStatusTransitionFails(
+        currentStatus: EventStatus,
+        nextStatus: EventStatus,
+    ) {
+        val eventId = insertEvent(status = currentStatus)
+
+        mockMvc
+            .patch("/api/v1/admin/events/$eventId/status") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"status":"${nextStatus.name}"}"""
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.INVALID_REQUEST_PARAMETER.code) }
+            }
+
+        assertThat(findEventStatus(eventId)).isEqualTo(currentStatus.name)
     }
 
     private fun insertEvent(status: EventStatus): String = insertEvent(status = status.name)
