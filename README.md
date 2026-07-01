@@ -116,6 +116,86 @@ JetBrains 공식 Kotlin 커버리지 도구입니다. Kotlin의 data class, lamb
 
 > 패키지별 커버리지 현황은 [COVERAGE.md](./COVERAGE.md)를 참고하세요.
 
+> ## 모니터링 (Prometheus + Grafana)
+
+정합성 백그라운드 잡(Reconcile · Drift · Rebuild · Cleanup · OrderStreamTrim)과 Redis 서킷 브레이커를 Micrometer 메트릭으로 수집·시각화합니다. **로컬 우선** 구성으로, 앱은 호스트(IDE/gradle, `:8080`)에서 실행하고 모니터링 스택만 별도 compose로 선택적으로 켜고 끕니다.
+
+---
+
+### 실행 방법
+
+#### 1단계 — 앱 기동 (`:8080`)
+
+> 로컬에서 docker-compose up -d 실행(MySql + Redis실행)
+
+#### 2단계 — 모니터링 스택 기동
+
+```bash
+cd monitoring
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+| 컨테이너 | 이미지 | 포트 |
+|---|---|---|
+| Prometheus | `prom/prometheus:v3.5.4` | `9090` |
+| Grafana | `grafana/grafana:13.1.0` | `3000` |
+
+> **Linux 호스트**에서는 Prometheus가 호스트 앱(`:8080`)에 닿도록 `docker-compose.monitoring.yml`의 `extra_hosts: "host.docker.internal:host-gateway"` 주석을 해제하세요. Docker Desktop(Mac/Win)은 기본 지원합니다.
+
+#### 3단계 — 접속 확인
+
+| 대상 | URL | 확인 사항 |
+|---|---|---|
+| Prometheus 타깃 | <http://localhost:9090/targets> | `snaptix-local` **UP** |
+| Grafana | <http://localhost:3000> (admin/admin) | `SnapTix > SnapTix Resilience` 대시보드 렌더 |
+
+(옵션) `POST /api/v1/admin/reconcile`(ADMIN) 호출 후 Reconcile 패널 값 변화를 확인할 수 있습니다.
+
+#### 종료
+
+```bash
+docker compose -f docker-compose.monitoring.yml down
+```
+
+---
+
+### 대시보드 — SnapTix Resilience
+
+7개 패널로 구성됩니다.
+
+| 패널 | 내용 |
+|---|---|
+| Reconcile 처리율 | released / compensated / failed (rate/s) |
+| Drift 처리율 | fixed / oversell / failed / skipped (rate/s) |
+| 잡 실행시간 max | reconcile / drift / rebuild / cleanup (s) |
+| Cleanup / OrderStreamTrim 처리율 | cleaned / failed / stream.trimmed (rate/s) |
+| Read-Only 모드 | OFF(green) / ON(red) |
+| Rebuild outcomes | outcome별 누적 |
+| Redis 서킷 브레이커 상태 | `resilience4j_circuitbreaker_state{name="redis"}` |
+
+---
+
+### 디렉터리 구조
+
+Grafana 프로비저닝 경로는 고정이므로 아래 구조를 정확히 맞춰야 자동 로드됩니다.
+
+```
+monitoring/
+├── docker-compose.monitoring.yml
+├── prometheus/
+│   ├── prometheus.yml
+│   └── secrets/
+│       └── prom_pass                 # 운영 scrape용 비밀번호 (gitignore)
+└── grafana/
+    ├── provisioning/
+    │   ├── datasources/datasource.yml    # uid: prometheus
+    │   └── dashboards/dashboard.yml
+    └── dashboards/
+        └── snaptix-resilience.json
+```
+
+---
+
 ---
 
 ## 부하 테스트 (k6)
