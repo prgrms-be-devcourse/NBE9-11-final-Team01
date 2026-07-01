@@ -179,26 +179,67 @@ export function getEventDetail(eventId) {
 
 /**
  * SSE 엔드포인트 연결 시도 (GET /api/v1/orders/sse/:orderId)
- * k6는 SSE 스트림을 지속 수신하지 못하므로 timeout 내 초기 응답만 검증.
+ *
+ * [1단계 긴급 수리] Last-Event-ID 헤더 전송 로직 제거.
+ * 서버 코드(OrderSseController / InMemorySseConnectionManager / OrderSseAdapter)를
+ * 확인한 결과, 이 헤더를 읽는 로직이 어디에도 없다 — 컨트롤러는 orderId 경로변수와
+ * 인증된 userId만으로 connect()를 호출하며, 재연결 판정은 SseChannelKey(resource, id)
+ * 동일 여부(= 동일 orderId)로만 이뤄진다. 즉 "이어받기"는 헤더가 아니라 같은 orderId로
+ * 다시 구독하는 것 자체이며, 서버는 재연결 시마다 StateReconstructor로 DB 기준 현재
+ * 상태를 재구성해 재전송한다. 이 재구성 이벤트를 실제로 수신해 검증하는 것은 k6 core
+ * http로는 불가능해(스트리밍 미지원) 2단계 고도화(k6/x/sse)에서 다룬다.
+ *
+ * k6는 SSE 스트림을 지속 수신하지 못하므로 timeout 내 초기 응답만 검증한다.
  *
  * @param {string} orderId
- * @param {string|null} lastEventId - 재연결 시 Last-Event-ID 헤더 값
  * @param {string} timeout
  * @returns {import('k6/http').RefinedResponse}
  */
-export function connectSse(orderId, lastEventId = null, timeout = '3s') {
-    const headers = {
-        Accept: 'text/event-stream',
-        'Cache-Control': 'no-cache',
-    }
-    if (lastEventId) {
-        headers['Last-Event-ID'] = lastEventId
-    }
+export function connectSse(orderId, timeout = '3s') {
     return http.get(`${BASE_URL}/api/v1/orders/sse/${orderId}`, {
-        headers,
+        headers: {
+            Accept: 'text/event-stream',
+            'Cache-Control': 'no-cache',
+        },
         timeout,
         responseCallback: SSE_EXPECTED,
     })
+}
+
+/** 클라이언트 타임아웃을 나타내는 k6 에러 코드 (환경에 따라 1050 또는 1211 관측됨). */
+const SSE_TIMEOUT_ERROR_CODES = [1050, 1211]
+
+/**
+ * SSE 초기 연결/재연결 결과 판정. (1단계 긴급 수리)
+ *
+ * 서버(application.yaml: realtime.sse.timeout=8m, heartbeat-interval=30s)는 SSE 연결을
+ * 최대 8분 유지하며, READY_TO_PAY는 연결을 닫지 않는다(SseEvent.terminal=false).
+ * 따라서 connectSse()의 짧은 timeout(기본 3s) 안에서는 응답이 "완료"되는 것이 아니라
+ * "타임아웃"되는 것이 정상 동작이다 — 예전 코드처럼 status===200만 성공으로 보면
+ * 이 체크는 사실상 항상 실패로 기록된다.
+ *
+ * 판정 기준:
+ *  - status 200 + Content-Type: text/event-stream → 정상 (즉시 완료되는 드문 케이스 포함)
+ *  - status 0 + 클라이언트 타임아웃(context deadline exceeded 등) → 정상
+ *    (서버가 연결을 계속 열어 두고 있다는 뜻이므로 실패가 아니다)
+ *  - 그 외(401/403/404/429/5xx 등 즉각적인 에러 응답) → 실패
+ *
+ * @param {import('k6/http').RefinedResponse} res
+ * @returns {boolean}
+ */
+export function isSseHandshakeOk(res) {
+    if (res.status === 200) {
+        return (res.headers['Content-Type'] || '').includes('text/event-stream')
+    }
+    if (res.status === 0) {
+        const message = (res.error || '').toLowerCase()
+        return (
+            SSE_TIMEOUT_ERROR_CODES.includes(res.error_code) ||
+            message.includes('timeout') ||
+            message.includes('deadline exceeded')
+        )
+    }
+    return false
 }
 
 // ── 유틸 ──────────────────────────────────────────────────────
