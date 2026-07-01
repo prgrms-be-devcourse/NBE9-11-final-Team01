@@ -31,8 +31,19 @@ choco install k6
 ```yaml
 # application-secret.yml
 jwt:
-  secret: <32자 이상의 시크릿 키>
+    secret: <32자 이상의 시크릿 키>
 ```
+
+---
+
+## 왜 매 실행 전에 초기화하는가
+
+`order-load.js`와 `sse-reconnect.js`는 같은 유저 풀(`load-user-1~200`)과 같은 `EVENT_ID`/`ZONE_ID`를 공유합니다. 앱을 재기동하지 않고 시나리오를 연달아 실행하면 다음 문제가 생깁니다.
+
+- **재고 소진**: `order-load.js`는 재고 100석짜리 zone에 최대 600건을 요청합니다. 한 번만 실행해도 재고가 대부분 소진되어, 재기동 없이 바로 다음 테스트를 돌리면 대부분 `429`(백프레셔/재고소진)로 처리되고 정상 주문 접수 경로가 검증되지 않습니다.
+- **멱등 충돌**: 서버의 멱등 키는 `userId + eventId` 단위(1인 1이벤트 1매)입니다. 같은 유저가 같은 이벤트에 이미 주문을 넣었다면 재시도는 `409`로 처리됩니다. `order-load`(유저 1~200)와 `sse-reconnect`(유저 1~10)는 유저 풀이 겹치므로, 재기동 없이 `order-load` 다음에 `sse-reconnect`를 돌리면 대부분 `409`를 받아 스킵되고 **SSE 검증 자체가 사실상 이뤄지지 않은 채로 "통과"** 처리될 수 있습니다.
+
+이벤트를 생성하는 HTTP API는 따로 없고(`EventController`는 조회 전용), 앱 기동 시 `LoadTestDataInitializer`만이 새 이벤트·구역·재고를 시딩합니다. 그래서 "항상 깨끗한 상태에서 시작"을 보장하는 방법은 **Redis를 비우고 앱을 재기동**하는 것뿐입니다. `run.sh`는 이 과정을 기본 동작(`--reset`)으로 자동화합니다.
 
 ---
 
@@ -40,7 +51,7 @@ jwt:
 
 프로젝트 루트에서 진행합니다.
 
-### 1단계 — 컨테이너 기동
+### 1단계 — 컨테이너 기동 (최초 1회)
 
 `docker-compose.loadtest.yml`은 dev 환경(`docker-compose.yml`)과 포트 충돌 없이 병렬로 기동됩니다 (MySQL: 3307, Redis: 6380).
 
@@ -48,65 +59,46 @@ jwt:
 docker compose -f docker-compose.loadtest.yml up -d
 ```
 
-### 2단계 — 앱 기동 (`loadtest` 프로파일)
+컨테이너는 세션 동안 계속 띄워두면 됩니다. `run.sh`가 매 실행마다 Redis 내용만 `FLUSHALL`로 비우고, 앱을 재기동해 새 이벤트/재고를 시딩합니다.
 
-```bash
-SPRING_PROFILES_ACTIVE=loadtest ./gradlew bootRun
-```
-
-앱 기동 시 `LoadTestDataInitializer`가 자동으로 아래를 수행합니다 (모두 멱등).
-
-| 작업 | 내용 |
-|---|---|
-| 어드민 생성 | `admin@snaptix.kr / Admin1234!` |
-| 테스트 유저 생성 | `load-user-1~200@test.com / Test1234!` 200명 |
-| 이벤트 생성 | `Load Test Event` — 구역 1개, 재고 100석 |
-| 상태 전환 | `PENDING` → `ON_SALE` |
-| 파일 출력 | `loadtest/seed/.env`, `loadtest/seed/users.json` |
-
-기동 완료 로그에서 시드 결과를 확인할 수 있습니다.
-
-```
-[LOADTEST]  EVENT_ID        = <uuid>
-[LOADTEST]  ZONE_ID         = <uuid>
-[LOADTEST]  REDIS_STOCK_KEY = ZONE:<id>:stock
-```
-
-생성된 `loadtest/seed/.env` 예시:
-
-```env
-BASE_URL=http://localhost:8080
-EVENT_ID=f47ac10b-58cc-4372-a567-0e02b2c3d479
-ZONE_ID=550e8400-e29b-41d4-a716-446655440000   # 공개 UUID (참고용)
-REDIS_STOCK_KEY=ZONE:501:stock                  # 내부 ID 파싱에 사용
-```
-
-> k6 스크립트는 `REDIS_STOCK_KEY`에서 내부 `zoneId(Long)`를 파싱해 주문 요청에 사용합니다.
-> (`OrderRequest.zoneId`는 Long 타입이며 공개 UUID와 다릅니다.)
-
-### 3단계 — 시나리오 실행
-
-k6에는 `--env-file` 플래그가 없으므로 `loadtest/run.sh` 래퍼를 사용합니다. 래퍼가 `.env`를 source한 뒤 k6를 호출합니다.
-
-#### order-load.js — 주문 인제스트 부하 테스트
-
-초당 20건 고정 요청(`constant-arrival-rate`), 30초 지속.
-주문 생성 → 상태 폴링 → teardown 오버셀 검증.
+### 2단계 — 시나리오 실행
 
 ```bash
 ./loadtest/run.sh order-load
-```
-
-#### sse-reconnect.js — SSE 연결·재연결 내구성 테스트
-
-10 VU, 60초 지속.
-SSE 초기 연결 → 의도적 끊김 → 재연결(Last-Event-ID) → 상태 폴링.
-
-```bash
 ./loadtest/run.sh sse-reconnect
 ```
 
-직접 실행이 필요한 경우 (Linux/macOS):
+인자를 생략하면 `order-load`가 기본값입니다. 기본 동작(`--reset`)은 다음을 순서대로 수행합니다.
+
+1. 이전에 `run.sh`가 띄워둔 앱(또는 `:8080`을 점유 중인 다른 프로세스)을 종료
+2. Redis 컨테이너에 `FLUSHALL` 실행 (재고/멱등/holds/rate-limit 등 모든 키 초기화)
+3. `SPRING_PROFILES_ACTIVE=loadtest ./gradlew bootRun`을 백그라운드로 재기동
+4. 로그에서 `[LOADTEST] 시드 완료` 마커를 확인할 때까지 대기 (새 `EVENT_ID`/`ZONE_ID`가 `loadtest/seed/.env`에 반영됨)
+5. `/actuator/health`가 `UP`이 될 때까지 짧게 대기
+6. `loadtest/seed/.env`를 로드해 k6 실행
+
+앱은 k6 실행이 끝나도 백그라운드에서 계속 떠 있습니다(로그 확인, 수동 API 호출 등에 사용 가능). 필요할 때 종료하세요.
+
+```bash
+./loadtest/run.sh stop
+```
+
+### 옵션
+
+| 옵션 | 설명 |
+|---|---|
+| `--reset` (기본값) | Redis FLUSHALL + 앱 재기동 후 실행. 이전 테스트 상태와 무관하게 항상 깨끗하게 시작. |
+| `--no-reset` | 초기화를 건너뛰고 기존 `loadtest/seed/.env`를 그대로 사용. 앱을 별도 터미널에서 직접 기동해 관리하던 기존 방식과 호환됩니다. 재고/멱등 상태가 이전 실행에서 이어진다는 점을 감안하고 사용하세요. |
+
+```bash
+# 기존 방식: 앱을 별도 터미널에서 직접 띄우고, run.sh는 초기화 없이 실행
+SPRING_PROFILES_ACTIVE=loadtest ./gradlew bootRun
+./loadtest/run.sh order-load --no-reset
+```
+
+### 직접 실행이 필요한 경우 (Linux/macOS)
+
+앱이 이미 떠 있고 `.env`가 최신 상태라고 확신할 때만 사용하세요(=초기화를 직접 책임지는 경우).
 
 ```bash
 set -a && source loadtest/seed/.env && set +a
@@ -115,19 +107,32 @@ k6 run loadtest/scenarios/order-load.js
 
 ---
 
-## 생성 파일 (커밋 금지)
-
-앱 기동 후 아래 파일이 자동 생성됩니다.
+## 생성/실행 산출물 (커밋 금지)
 
 | 파일 | 내용 |
 |---|---|
-| `loadtest/seed/.env` | `EVENT_ID`, `ZONE_ID`, `REDIS_STOCK_KEY` |
+| `loadtest/seed/.env` | `EVENT_ID`, `ZONE_ID`, `REDIS_STOCK_KEY` — 앱 기동 시 자동 생성/갱신 |
 | `loadtest/seed/users.json` | k6에서 사용할 유저 목록 (이메일 / 패스워드) |
+| `loadtest/results/.run/app.log` | `run.sh`가 재기동한 앱의 stdout/stderr 로그 |
+| `loadtest/results/.run/app.pid` | `run.sh`가 재기동한 앱의 PID (`stop` 서브커맨드가 사용) |
 
-`loadtest/seed/.gitignore`에 `.env`와 `users.json`이 포함되어 있는지 확인하세요. 템플릿은 `loadtest/seed/.env.example`을 참고합니다.
+`loadtest/seed/.env`, `users.json`, `loadtest/results/`는 루트 `.gitignore`에 이미 포함되어 있습니다. 템플릿은 `loadtest/seed/.env.example`을 참고합니다.
+
+`--reset`(기본값)으로 실행하면 `loadtest/seed/.env`가 없을 때 `run.sh`가 `.env.example`을 복사해 자동으로 만들어줍니다 — 최초 실행이라도 별도로 `cp`할 필요는 없습니다. `--no-reset`으로 직접 앱을 관리하는 경우에는 최초 1회 아래처럼 직접 생성해두세요.
 
 ```bash
 cp loadtest/seed/.env.example loadtest/seed/.env
+```
+
+---
+
+## 주기적 정리 (선택)
+
+`--reset`은 Redis만 비우고 MySQL은 건드리지 않습니다. 이벤트/구역이 매번 새 UUID로 생성되므로 이전 데이터와 충돌하지는 않지만, 반복 실행할수록 loadtest MySQL에 이벤트·주문 데이터가 계속 쌓입니다. 기능적으로 문제는 아니지만, 필요하면 컨테이너를 통째로 재생성해 완전히 비우세요.
+
+```bash
+docker compose -f docker-compose.loadtest.yml down
+docker compose -f docker-compose.loadtest.yml up -d
 ```
 
 ---
@@ -139,8 +144,11 @@ cp loadtest/seed/.env.example loadtest/seed/.env
 | `BASE_URL` | ✓ | 서버 주소 (기본값: `http://localhost:8080`) |
 | `EVENT_ID` | ✓ | 시드된 이벤트 UUID |
 | `REDIS_STOCK_KEY` | ✓ | `ZONE:<id>:stock` 형식. 내부 zoneId 파싱에 사용. |
+| `REDIS_CONTAINER` | - | `run.sh`가 FLUSHALL을 실행할 Redis 컨테이너명 (기본값: `snaptix-redis-loadtest`) |
+| `APP_PORT` | - | `run.sh`가 헬스체크·포트 정리에 사용할 앱 포트 (기본값: `8080`) |
+| `SEED_TIMEOUT_SEC` | - | 시드 완료 대기 타임아웃(초). 콜드 빌드 시 늘려서 사용 (기본값: `180`) |
 
-`.env.example`에는 `LoadTestDataInitializer` 시딩 옵션(`USER_COUNT`, `USER_PASSWORD`, `TOTAL_CAPACITY` 등)도 정의되어 있으며, `EVENT_ID` / `ZONE_ID` / `REDIS_STOCK_KEY`는 2단계 앱 기동 후 자동으로 채워집니다.
+`.env.example`에는 `LoadTestDataInitializer` 시딩 옵션(`USER_COUNT`, `USER_PASSWORD`, `TOTAL_CAPACITY` 등)도 정의되어 있으며, `EVENT_ID` / `ZONE_ID` / `REDIS_STOCK_KEY`는 `run.sh` 실행(재기동) 후 자동으로 채워집니다.
 
 ---
 
@@ -209,10 +217,14 @@ loadtest/
 ├── utils/
 │   └── helpers.js          # 공통 API 호출 함수
 ├── thresholds.js           # 공유 임계값 상수
-├── run.sh                  # .env 로드 후 k6 실행 래퍼
+├── run.sh                  # Redis FLUSHALL + 앱 재기동 후 k6 실행하는 래퍼
 ├── README.md               # (이 파일)
-└── seed/
-    ├── .env.example        # 환경변수 템플릿
-    ├── .env                # LoadTestDataInitializer 자동 생성
-    └── users.json          # LoadTestDataInitializer 자동 생성
+├── seed/
+│   ├── .env.example        # 환경변수 템플릿
+│   ├── .env                # LoadTestDataInitializer 자동 생성/갱신
+│   └── users.json          # LoadTestDataInitializer 자동 생성
+└── results/
+    └── .run/
+        ├── app.log          # run.sh가 재기동한 앱 로그
+        └── app.pid          # run.sh가 재기동한 앱 PID
 ```
