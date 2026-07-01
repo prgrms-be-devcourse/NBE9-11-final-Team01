@@ -6,6 +6,19 @@ export const BASE_URL = (__ENV.BASE_URL || 'http://localhost:8080').replace(/\/$
 
 export const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
+// ── 응답 판정 (이슈: order-load 임계값/응답 판정 기준 재설계) ──────
+// k6는 기본적으로 상태코드 4xx/5xx를 모두 http_req_failed=true 로 집계한다.
+// 이 도메인에서는 429(백프레셔)·409(멱등 충돌)가 "정상적으로 예상되는" 응답이므로,
+// responseCallback으로 엔드포인트별 기대 상태코드를 명시해 실제 장애(5xx, 예상 밖 4xx)만
+// http_req_failed에 잡히도록 한다. checks_total의 개별 assertion(429/409 체크 등)은
+// 이 설정과 별개로 그대로 유지된다.
+const SIGNUP_EXPECTED = http.expectedStatuses(201, 409)
+const LOGIN_EXPECTED = http.expectedStatuses(200)
+const ORDER_EXPECTED = http.expectedStatuses(202, 409, 429)
+const STATUS_EXPECTED = http.expectedStatuses(200)
+const EVENT_DETAIL_EXPECTED = http.expectedStatuses(200)
+const SSE_EXPECTED = http.expectedStatuses(200)
+
 // ── 인증 ──────────────────────────────────────────────────────
 
 /**
@@ -19,7 +32,7 @@ export function signUp(email, password) {
     const res = http.post(
         `${BASE_URL}/api/v1/auth/signup`,
         JSON.stringify({ email, password }),
-        { headers: JSON_HEADERS },
+        { headers: JSON_HEADERS, responseCallback: SIGNUP_EXPECTED },
     )
 
     if (res.status !== 201 && res.status !== 409) {
@@ -41,7 +54,7 @@ export function login(email, password) {
     const res = http.post(
         `${BASE_URL}/api/v1/auth/login`,
         JSON.stringify({ email, password }),
-        { headers: JSON_HEADERS },
+        { headers: JSON_HEADERS, responseCallback: LOGIN_EXPECTED },
     )
 
     if (!check(res, { 'login 200': (r) => r.status === 200 })) {
@@ -54,6 +67,10 @@ export function login(email, password) {
 /**
  * 주문 요청 (POST /api/v1/orders)
  *
+ * 202(수락)·429(백프레셔)·409(멱등 충돌) 모두 이 도메인에서는 정상 응답이므로
+ * responseCallback으로 http_req_failed 집계에서 제외한다. 401/5xx 등 예상 밖 상태는
+ * 여전히 http_req_failed=true 로 잡혀 실제 장애를 가린다.
+ *
  * @param {string} eventId  - UUID 문자열 (EVENT_ID 환경변수)
  * @param {number} zoneDbId - 내부 Long ID. REDIS_STOCK_KEY("ZONE:<id>:stock")에서 파싱.
  * @returns {import('k6/http').RefinedResponse}
@@ -62,7 +79,7 @@ export function placeOrder(eventId, zoneDbId) {
     return http.post(
         `${BASE_URL}/api/v1/orders`,
         JSON.stringify({ eventId, zoneId: zoneDbId }),
-        { headers: JSON_HEADERS },
+        { headers: JSON_HEADERS, responseCallback: ORDER_EXPECTED },
     )
 }
 
@@ -76,6 +93,7 @@ export function placeOrder(eventId, zoneDbId) {
 export function getOrderStatus(orderId) {
     return http.get(`${BASE_URL}/api/v1/orders/${orderId}`, {
         headers: JSON_HEADERS,
+        responseCallback: STATUS_EXPECTED,
     })
 }
 
@@ -89,7 +107,9 @@ export function getOrderStatus(orderId) {
  * @returns {import('k6/http').RefinedResponse}
  */
 export function getEventDetail(eventId) {
-    return http.get(`${BASE_URL}/api/v1/events/${eventId}`)
+    return http.get(`${BASE_URL}/api/v1/events/${eventId}`, {
+        responseCallback: EVENT_DETAIL_EXPECTED,
+    })
 }
 
 // ── SSE ───────────────────────────────────────────────────────
@@ -114,6 +134,7 @@ export function connectSse(orderId, lastEventId = null, timeout = '3s') {
     return http.get(`${BASE_URL}/api/v1/orders/sse/${orderId}`, {
         headers,
         timeout,
+        responseCallback: SSE_EXPECTED,
     })
 }
 
