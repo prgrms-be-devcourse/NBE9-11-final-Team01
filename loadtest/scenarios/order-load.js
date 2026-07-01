@@ -5,13 +5,18 @@
  *  0. setup: seed 유저 전원 회원가입 시도(이미 존재하면 409로 통과) → 로그인 401 방지
  *  1. VU 최초 실행 시 로그인 (JWT 쿠키 획득)
  *  2. POST /api/v1/orders → 202 Accepted
- *  3. GET /api/v1/orders/:orderId 폴링 → 터미널 상태 대기
- *  4. teardown: GET /api/v1/events/:eventId → currentStock 음수 시 oversell_errors 카운트
+ *  3. GET /api/v1/orders/:orderId 폴링 → READY_TO_PAY 도달 시 mock 결제 승인+webhook 호출
+ *  4. 결제 처리 결과(CONFIRMED)까지 폴링 계속
+ *  5. teardown: GET /api/v1/events/:eventId → currentStock 음수 시 oversell_errors 카운트
  *
  * 환경변수 (loadtest/seed/.env에서 자동 주입):
  *  BASE_URL         - 서버 주소 (기본: http://localhost:8080)
  *  EVENT_ID         - 이벤트 UUID
  *  REDIS_STOCK_KEY  - "ZONE:<internal_long_id>:stock" 형식. zoneId(Long) 파싱에 사용.
+ *  MOCK_PAYMENT_WEBHOOK_SECRET - (선택) payment.mock.webhook.secret과 동일해야 함.
+ *                                 미지정 시 application-secret.yaml 기본값
+ *                                 (replace-this-with-mock-payment-webhook-secret) 사용 — 로컬은 보통
+ *                                 application-secret.example.yaml을 그대로 복사해 쓰므로 이 값이 맞다.
  *
  * 실행:
  *  k6 run --env-file loadtest/seed/.env loadtest/scenarios/order-load.js
@@ -25,7 +30,8 @@ import {
     placeOrder,
     getOrderStatus,
     getEventDetail,
-    isTerminal,
+    approvePayment,
+    sendPaymentWebhook,
 } from '../utils/helpers.js'
 import { thresholds } from '../thresholds.js'
 
@@ -42,6 +48,13 @@ if (isNaN(ZONE_DB_ID)) throw new Error('REDIS_STOCK_KEY에서 zoneId를 파싱�
 const oversellErrors = new Counter('oversell_errors')
 /** 429 백프레셔 비율. 분모는 전체 주문 시도 횟수. */
 const backpressureHit = new Rate('backpressure_hit')
+
+// 주문 상태값 참고 (실제 reservations.status: PENDING_PAYMENT/CONFIRMED/CANCELLED/RELEASED).
+// GET /orders/:id는 READY_TO_PAY를 결제 가능 상태로 반환하는 것으로 관측됨(2026-07 재검증).
+const PAYABLE_STATUS = 'READY_TO_PAY'
+// CONFIRMED가 이 시나리오의 진짜 성공 종점. CANCELLED/RELEASED/FAILED/EXPIRED는 결제 실패·홀드
+// 만료 등으로 갈리는 경로 — 어느 쪽이든 폴링을 멈춰야 하므로 함께 "종료 상태"로 취급한다.
+const FINAL_STATUSES = ['CONFIRMED', 'CANCELLED', 'RELEASED', 'FAILED', 'EXPIRED']
 
 // ── 시나리오 옵션 ─────────────────────────────────────────────
 export const options = {
@@ -122,14 +135,29 @@ export default function () {
 
     const { orderId } = orderRes.json()
 
-    // 3. 상태 폴링 (Retry-After: 2 헤더에 맞춰 2초 간격, 최대 30초)
+    // 3~4. 상태 폴링 → READY_TO_PAY 도달 시 결제 승인+webhook 호출 → CONFIRMED까지 폴링 계속
+    // (Retry-After: 2 헤더에 맞춰 2초 간격, 최대 30초)
     let finalStatus = null
+    let paymentTriggered = false
     for (let i = 0; i < 15; i++) {
         sleep(2)
         const statusRes = getOrderStatus(orderId)
         if (!check(statusRes, { 'status poll 200': (r) => r.status === 200 })) break
         const { status } = statusRes.json()
-        if (isTerminal(status)) {
+
+        if (status === PAYABLE_STATUS && !paymentTriggered) {
+            paymentTriggered = true
+
+            const approveRes = approvePayment(orderId)
+            check(approveRes, { 'payment approve 200': (r) => r.status === 200 })
+
+            const webhookRes = sendPaymentWebhook(orderId, 'SUCCESS')
+            check(webhookRes, { 'payment webhook 200': (r) => r.status === 200 })
+
+            continue // 다음 폴링에서 CONFIRMED 반영 여부 확인
+        }
+
+        if (FINAL_STATUSES.includes(status)) {
             finalStatus = status
             break
         }
@@ -137,8 +165,7 @@ export default function () {
 
     check(null, {
         'terminal status reached': () => finalStatus !== null,
-        'order not failed/expired': () =>
-            finalStatus === 'READY_TO_PAY' || finalStatus === 'CONFIRMED',
+        'order confirmed': () => finalStatus === 'CONFIRMED',
     })
 }
 
