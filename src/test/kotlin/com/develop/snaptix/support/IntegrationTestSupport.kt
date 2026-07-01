@@ -47,6 +47,16 @@ import org.testcontainers.mysql.MySQLContainer
  *  - 공식 문서 명시: Testcontainers 는 **순차 실행만 지원**. 통합 테스트 병렬 실행 비활성 유지.
  *  - 순수 단위 테스트(RedisKeyFactoryTest, CacheAsideAspectTest, IdempotencyAspectTest,
  *    OrderSseAdapterTest 등 mockk 기반)는 컨테이너가 불필요하므로 이 클래스를 상속하지 않는다.
+ *
+ * ## connectionTimeZone=SERVER (이슈 #359 하위 이슈)
+ *  MySQLContainer가 생성하는 JDBC URL은 기본적으로 시간대 파라미터를 포함하지 않는다. 이 경우
+ *  MySQL Connector/J는 `connectionTimeZone=LOCAL`(기본값)을 적용해 "서버가 JDBC 클라이언트
+ *  JVM과 같은 시간대"라고 가정하는데, 로컬 개발 PC(Asia/Seoul)와 컨테이너(TZ 미설정, UTC)가
+ *  다르면 `reservations.created_at`(DEFAULT CURRENT_TIMESTAMP) 같은 DB 서버측 타임스탬프가
+ *  9시간 어긋나게 해석된다. `withUrlParam("connectionTimeZone", "SERVER")`로 드라이버가 서버에
+ *  실제 세션 시간대를 직접 물어보도록 강제해, 실행 환경(로컬 PC 시간대)과 무관하게 항상 정확한
+ *  값을 읽도록 한다. `application.yaml`/`application-loadtest.yaml`의 datasource.url에도 동일한
+ *  파라미터를 추가했다 — 둘 중 하나만 고치면 나머지 환경에서 회귀가 재발한다.
  */
 @SpringBootTest
 abstract class IntegrationTestSupport {
@@ -110,6 +120,8 @@ abstract class IntegrationTestSupport {
                 withDatabaseName("snaptix")
                 withUsername("snaptix")
                 withPassword("snaptix1234")
+                // 운영/로드테스트 datasource.url과 동일하게 SERVER 모드 강제 (이슈 #359 하위 이슈).
+                withUrlParam("connectionTimeZone", "SERVER")
                 start()
             }
 
