@@ -178,8 +178,6 @@
 # HTML 리포트 생성 (build/reports/kover/html/index.html)
 ./gradlew koverHtmlReport
 
-# 커버리지 기준 검증 (현재 기준 70% 미달 시 빌드 실패 — 목표 80%로 상향 예정)
+# 커버리지 기준 검증 
 ./gradlew koverVerify
 ```
-
-> 현재 `koverVerify` 기준은 **라인 70%**(임시)입니다. 미달 패키지 보완 후 최종 목표인 **80%**로 상향할 예정입니다. (#327)
