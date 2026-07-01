@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
 import com.develop.snaptix.global.redis.gateway.StreamMessage
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -27,16 +28,21 @@ class OrderStreamConsumerTest {
     private val orderProcessor = mockk<OrderProcessor>(relaxed = true)
     private val activeEventDiscoveryPort = mockk<ActiveEventDiscoveryPort>()
     private val orderStreamProperties = OrderStreamProperties(consumerGroup = CONSUMER_GROUP)
+
+    // 테스트마다 새 인스턴스 생성 → 카운터 누적 방지
+    private lateinit var meterRegistry: SimpleMeterRegistry
     private lateinit var consumer: OrderStreamConsumer
 
     @BeforeEach
     fun setUp() {
+        meterRegistry = SimpleMeterRegistry()
         consumer =
             OrderStreamConsumer(
                 orderStreamGateway = orderStreamGateway,
                 orderProcessor = orderProcessor,
                 activeEventDiscoveryPort = activeEventDiscoveryPort,
                 orderStreamProperties = orderStreamProperties,
+                meterRegistry = meterRegistry,
             )
     }
 
@@ -138,6 +144,24 @@ class OrderStreamConsumerTest {
 
         @Test
         @Timeout(value = 3, unit = TimeUnit.SECONDS)
+        @DisplayName("정상 처리 및 XACK 완료 시 snaptix.order.xack.count 가 1 증가한다")
+        fun xackCountIncrementedOnSuccess() {
+            // Arrange
+            mockLoopToRunOnce(eventId)
+            every { orderStreamGateway.read(any(), any(), any(), any()) } returns
+                listOf(StreamMessage(streamMessageId, validPayload))
+
+            // Act
+            consumer.start()
+            awaitConsumerStop()
+
+            // Assert
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count())
+                .isEqualTo(1.0)
+        }
+
+        @Test
+        @Timeout(value = 3, unit = TimeUnit.SECONDS)
         @DisplayName("필드가 누락된 잘못된 형식의 메시지(터미널 예외)가 유입된 경우, 처리를 중단하고 XACK를 호출하여 PEL에서 즉시 제거한다")
         fun terminalErrorCase() {
             // Arrange
@@ -159,6 +183,25 @@ class OrderStreamConsumerTest {
 
         @Test
         @Timeout(value = 3, unit = TimeUnit.SECONDS)
+        @DisplayName("터미널 예외 시 gateway.ack 는 호출되지만 snaptix.order.xack.count 는 증가하지 않는다")
+        fun xackCountNotIncrementedOnTerminalError() {
+            // Arrange
+            mockLoopToRunOnce(eventId)
+            val invalidPayload = mapOf("wrongField" to "wrongData")
+            every { orderStreamGateway.read(any(), any(), any(), any()) } returns
+                listOf(StreamMessage(streamMessageId, invalidPayload))
+
+            // Act
+            consumer.start()
+            awaitConsumerStop()
+
+            // Assert: 찌꺼기 ACK는 호출되지만 정상 처리 메트릭은 미증가
+            verify(exactly = 1) { orderStreamGateway.ack(eventId, CONSUMER_GROUP, streamMessageId) }
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count()).isZero()
+        }
+
+        @Test
+        @Timeout(value = 3, unit = TimeUnit.SECONDS)
         @DisplayName("메시지 처리 중 일시적인 오류(비터미널 예외)가 발생한 경우, XACK를 호출하지 않고 PEL에 남겨둔다")
         fun nonTerminalErrorCase() {
             // Arrange
@@ -176,6 +219,24 @@ class OrderStreamConsumerTest {
             // Assert
             verify(exactly = 1) { orderProcessor.process(any()) }
             verify(exactly = 0) { orderStreamGateway.ack(any(), any(), any()) } // ACK 생략!
+        }
+
+        @Test
+        @Timeout(value = 3, unit = TimeUnit.SECONDS)
+        @DisplayName("비터미널 예외 시 snaptix.order.xack.count 가 증가하지 않는다")
+        fun xackCountNotIncrementedOnNonTerminalError() {
+            // Arrange
+            mockLoopToRunOnce(eventId)
+            every { orderStreamGateway.read(any(), any(), any(), any()) } returns
+                listOf(StreamMessage(streamMessageId, validPayload))
+            every { orderProcessor.process(any()) } throws RuntimeException("DB Connection Timeout")
+
+            // Act
+            consumer.start()
+            awaitConsumerStop()
+
+            // Assert
+            assertThat(meterRegistry.counter("snaptix.order.xack.count").count()).isZero()
         }
 
         @Test

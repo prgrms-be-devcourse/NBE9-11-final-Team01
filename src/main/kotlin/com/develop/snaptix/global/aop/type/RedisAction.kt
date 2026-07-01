@@ -11,6 +11,7 @@ package com.develop.snaptix.global.aop.type
  *   - OWNERSHIP 추가 (order:owner PENDING 단계 소유권 — ISSUE-08)
  *   - PAYMENT_APPROVE 추가 (payment:approve 이중 클릭 가드 — ISSUE-09)
  *   - STOCK_GET / STOCK_REBUILD 추가 (재고 조회·재구축 — ISSUE-05-EXT)
+ *   - STREAM_DEPTH_CHECK 추가 (XLEN/XPENDING 깊이 게이지 갱신 — #312)
  */
 enum class RedisAction {
     // ── 주문 큐 (Stream) ──────────────────────────────────────────────
@@ -32,6 +33,9 @@ enum class RedisAction {
 
     /** XLEN ≥ 정원+α 시 429 백프레셔 */
     INGEST_BACKPRESSURE,
+
+    /** XLEN·XPENDING 현재 깊이 게이지 갱신 (트림 스케줄러 주기마다) */
+    STREAM_DEPTH_CHECK,
 
     // ── 재고 ─────────────────────────────────────────────────────────
 

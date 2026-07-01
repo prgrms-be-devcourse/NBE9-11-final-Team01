@@ -1,5 +1,6 @@
 package com.develop.snaptix.global.security.jwt
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseCookie
 import org.springframework.stereotype.Component
 
@@ -11,6 +12,7 @@ private const val SAME_SITE_STRICT = "Strict"
 
 @Component
 class CookieProvider(
+    @Value("\${app.cookie.secure:false}") private val cookieSecure: Boolean,
     private val jwtProperties: JwtProperties,
 ) {
     fun createAccessTokenCookie(token: String): ResponseCookie = createCookie(
@@ -49,7 +51,7 @@ class CookieProvider(
     ): ResponseCookie = ResponseCookie
         .from(name, value)
         .httpOnly(true)
-        .secure(true)
+        .secure(cookieSecure)
         .sameSite(SAME_SITE_STRICT)
         .path(path)
         .maxAge(maxAgeSeconds)

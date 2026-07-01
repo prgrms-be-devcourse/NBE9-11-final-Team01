@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.order.api.dto.OrderMessage
 import com.develop.snaptix.domain.order.api.dto.OrderRequest
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.config.RateLimitProperties
 import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
 import com.develop.snaptix.global.redis.gateway.IdempotencyRedisGateway
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
@@ -11,6 +12,7 @@ import com.develop.snaptix.global.redis.gateway.OwnershipRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitRedisGateway
 import com.develop.snaptix.global.redis.gateway.RateLimitResult
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -37,6 +39,13 @@ class OrderIngestServiceTest {
     private val orderStreamGateway = mockk<OrderStreamGateway>()
     private val ownershipRedisGateway = mockk<OwnershipRedisGateway>()
 
+    // ── 설정값 (실제 기본값 그대로 사용) ─────────────────────────────────────────
+    private val rateLimitProperties = RateLimitProperties()
+
+    // ── 메트릭 ──────────────────────────────────────────────────────────────────
+    // 테스트마다 새 인스턴스 생성 → 카운터 누적 방지
+    private lateinit var meterRegistry: SimpleMeterRegistry
+
     private lateinit var sut: OrderIngestService
 
     // ── 공통 픽스처 ─────────────────────────────────────────────────────────────
@@ -46,19 +55,24 @@ class OrderIngestServiceTest {
     private val zoneId = 10L
     private val totalCapacity = 100
     private val request = OrderRequest(eventId = eventPublicId.toString(), zoneId = zoneId)
+    private val userRateLimitKey = "user:$userId"
 
     private val onSaleEventInfo = mockk<EventInfo>(relaxed = true)
 
     @BeforeEach
     fun setUp() {
+        meterRegistry = SimpleMeterRegistry()
+
         sut =
             OrderIngestService(
                 orderRateLimiter = orderRateLimiter,
+                rateLimitProperties = rateLimitProperties,
                 eventCacheGateway = eventCacheGateway,
                 backpressureGuard = backpressureGuard,
                 idempotencyGateway = idempotencyGateway,
                 orderStreamGateway = orderStreamGateway,
                 ownershipRedisGateway = ownershipRedisGateway,
+                meterRegistry = meterRegistry,
             )
 
         every { onSaleEventInfo.status } returns "ON_SALE"
@@ -103,18 +117,27 @@ class OrderIngestServiceTest {
             assertThat(message.eventId).isEqualTo(eventPublicId)
             assertThat(message.zoneId).isEqualTo(zoneId)
         }
+
+        @Test
+        @DisplayName("XADD 성공 시 snaptix.order.queue.size 카운터가 1 증가한다")
+        fun `increments queue size counter on successful XADD`() {
+            sut.ingest(userId, request, ip)
+
+            assertThat(meterRegistry.counter("snaptix.order.queue.size").count())
+                .isEqualTo(1.0)
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════════
-    // 1단계: Rate Limiting
+    // 1단계: Rate Limiting (사용자 기준 + IP 기준 병행)
     // ════════════════════════════════════════════════════════════════════════════
     @Nested
     @DisplayName("1단계 — Rate Limiting")
     inner class RateLimiting {
         @Test
-        @DisplayName("초당 한도 초과 시 RATE_LIMIT_EXCEEDED 를 던진다")
-        fun `throws RATE_LIMIT_EXCEEDED when per-second limit is exceeded`() {
-            every { orderRateLimiter.hit(ip, 5, 20) } returns
+        @DisplayName("사용자(userId) 한도 초과 시 RATE_LIMIT_EXCEEDED 를 던진다")
+        fun `throws RATE_LIMIT_EXCEEDED when per-user limit is exceeded`() {
+            every { orderRateLimiter.hit(userRateLimitKey, any(), any()) } returns
                 RateLimitResult(allowed = false, retryAfter = Duration.ofSeconds(1))
 
             assertThatThrownBy { sut.ingest(userId, request, ip) }
@@ -124,9 +147,21 @@ class OrderIngestServiceTest {
         }
 
         @Test
-        @DisplayName("분당 한도 초과 시 RATE_LIMIT_EXCEEDED 를 던진다")
+        @DisplayName("IP 한도 초과 시 RATE_LIMIT_EXCEEDED 를 던진다 (사용자 한도는 통과)")
+        fun `throws RATE_LIMIT_EXCEEDED when per-ip limit is exceeded`() {
+            every { orderRateLimiter.hit(ip, any(), any()) } returns
+                RateLimitResult(allowed = false, retryAfter = Duration.ofSeconds(1))
+
+            assertThatThrownBy { sut.ingest(userId, request, ip) }
+                .isInstanceOf(BusinessException::class.java)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RATE_LIMIT_EXCEEDED)
+        }
+
+        @Test
+        @DisplayName("분당 한도 초과 시에도 RATE_LIMIT_EXCEEDED 를 던진다")
         fun `throws RATE_LIMIT_EXCEEDED when per-minute limit is exceeded`() {
-            every { orderRateLimiter.hit(ip, 5, 20) } returns
+            every { orderRateLimiter.hit(userRateLimitKey, any(), any()) } returns
                 RateLimitResult(allowed = false, retryAfter = Duration.ofMinutes(1))
 
             assertThatThrownBy { sut.ingest(userId, request, ip) }
@@ -146,6 +181,37 @@ class OrderIngestServiceTest {
             verify(exactly = 0) { eventCacheGateway.get(any()) }
             verify(exactly = 0) { idempotencyGateway.tryAcquire(any(), any(), any()) }
             verify(exactly = 0) { orderStreamGateway.add(any()) }
+        }
+
+        @Test
+        @DisplayName("사용자 한도와 IP 한도를 각각 올바른 키·설정값으로 검사한다")
+        fun `checks both user and ip scoped limits with configured policy values`() {
+            sut.ingest(userId, request, ip)
+
+            verify(exactly = 1) {
+                orderRateLimiter.hit(
+                    userRateLimitKey,
+                    rateLimitProperties.userPerSecond,
+                    rateLimitProperties.userPerMinute,
+                )
+            }
+            verify(exactly = 1) {
+                orderRateLimiter.hit(ip, rateLimitProperties.ipPerSecond, rateLimitProperties.ipPerMinute)
+            }
+        }
+
+        @Test
+        @DisplayName("같은 IP를 공유해도 사용자별로 서로 다른 rate limit 키가 사용된다")
+        fun `separates rate limit key per user even under the same shared ip`() {
+            val otherUserId = 999L
+
+            sut.ingest(userId, request, ip)
+            sut.ingest(otherUserId, request, ip)
+
+            verify(exactly = 1) { orderRateLimiter.hit("user:$userId", any(), any()) }
+            verify(exactly = 1) { orderRateLimiter.hit("user:$otherUserId", any(), any()) }
+            // 같은 IP는 두 번 모두 동일한 키로 검사된다 (호출 2회)
+            verify(exactly = 2) { orderRateLimiter.hit(ip, any(), any()) }
         }
     }
 
@@ -356,6 +422,14 @@ class OrderIngestServiceTest {
             verify(exactly = 1) { idempotencyGateway.compareAndDelete(any(), any(), any()) }
             verify(exactly = 1) { ownershipRedisGateway.delete(any()) }
         }
+
+        @Test
+        @DisplayName("XADD 실패 시 snaptix.order.queue.size 카운터가 증가하지 않는다")
+        fun `does not increment queue size counter when XADD fails`() {
+            runCatching { sut.ingest(userId, request, ip) }
+
+            assertThat(meterRegistry.counter("snaptix.order.queue.size").count()).isZero()
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════════
@@ -385,6 +459,17 @@ class OrderIngestServiceTest {
                 eventCacheGateway.get(any())
                 backpressureGuard.check(any(), any())
                 idempotencyGateway.tryAcquire(any(), any(), any())
+            }
+        }
+
+        @Test
+        @DisplayName("사용자 기준 rate limit 검사가 IP 기준 검사보다 먼저 수행된다")
+        fun `user scoped rate limit check occurs before ip scoped check`() {
+            sut.ingest(userId, request, ip)
+
+            verifyOrder {
+                orderRateLimiter.hit(userRateLimitKey, any(), any())
+                orderRateLimiter.hit(ip, any(), any())
             }
         }
 

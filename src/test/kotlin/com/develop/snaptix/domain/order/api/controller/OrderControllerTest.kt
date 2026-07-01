@@ -5,7 +5,9 @@ import com.develop.snaptix.domain.order.api.dto.OrderStatus
 import com.develop.snaptix.domain.order.api.dto.OrderStatusResponse
 import com.develop.snaptix.domain.order.api.port.OrderIngestPort
 import com.develop.snaptix.domain.order.api.port.OrderQueryPort
+import com.develop.snaptix.domain.user.entity.UserRole
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.security.auth.AuthenticatedUser
 import com.develop.snaptix.global.security.config.SecurityConfig
 import com.develop.snaptix.global.security.handler.CustomAccessDeniedHandler
 import com.develop.snaptix.global.security.handler.CustomAuthenticationEntryPoint
@@ -77,10 +79,10 @@ class OrderControllerTest {
     private val validEventId = UUID.randomUUID().toString()
     private val validZoneId = 30L
 
-    /** Long principal 을 담은 인증 객체 — @AuthenticationPrincipal Long? 에 바인딩된다 */
+    /** 실제 JWT 필터와 동일하게 AuthenticatedUser principal 을 담은 인증 객체 */
     private val userAuth =
         UsernamePasswordAuthenticationToken(
-            testUserId,
+            AuthenticatedUser(testUserId, UserRole.USER),
             null,
             listOf(SimpleGrantedAuthority("ROLE_USER")),
         )

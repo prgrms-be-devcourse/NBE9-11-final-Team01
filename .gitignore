@@ -42,3 +42,20 @@ out/
 ### Secret ###
 src/main/resources/application-secret.yml
 src/main/resources/application-secret.yaml
+
+# Prometheus secrets
+monitoring/prometheus/secrets/prom_pass
+
+### Load Test — 시드/런타임 산출물 ###
+# 환경변수 (어드민 비밀번호, EVENT_ID 등 민감 정보)
+loadtest/seed/.env
+# 테스트 유저 목록 (이메일/비밀번호 평문)
+loadtest/seed/users.json
+# curl 쿠키 임시 파일
+loadtest/seed/.admin_cookies.txt
+loadtest/seed/.cookies.txt
+# k6 실행 결과 및 리포트
+loadtest/results/
+loadtest/**/*.json
+# .env.example은 커밋 대상 — 제외하지 않음
+!loadtest/seed/.env.example

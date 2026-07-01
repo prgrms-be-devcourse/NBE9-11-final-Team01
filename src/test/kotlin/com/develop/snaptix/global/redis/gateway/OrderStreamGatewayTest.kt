@@ -271,6 +271,49 @@ class OrderStreamGatewayTest : IntegrationTestSupport() {
         }.isInstanceOf(org.springframework.dao.DataAccessException::class.java)
     }
 
+    // ── pendingCount ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `Stream이 없으면 pendingCount는 0을 반환한다`() {
+        val eventId = UUID.randomUUID()
+
+        assertThat(gateway.pendingCount(eventId, GROUP)).isZero()
+    }
+
+    @Test
+    fun `그룹이 있고 미확인 메시지가 없으면 pendingCount는 0을 반환한다`() {
+        val message = orderMessage()
+        gateway.ensureGroup(message.eventId, GROUP)
+        val messageId = gateway.add(message)
+        gateway.read(message.eventId, GROUP, CONSUMER, READ_COUNT)
+        gateway.ack(message.eventId, GROUP, messageId)
+
+        assertThat(gateway.pendingCount(message.eventId, GROUP)).isZero()
+    }
+
+    @Test
+    fun `XREADGROUP 후 XACK 없이 남은 메시지 수를 반환한다`() {
+        val eventId = UUID.randomUUID()
+        gateway.ensureGroup(eventId, GROUP)
+        gateway.add(orderMessage(eventId))
+        gateway.add(orderMessage(eventId))
+        gateway.read(eventId, GROUP, CONSUMER, READ_COUNT)
+
+        assertThat(gateway.pendingCount(eventId, GROUP)).isEqualTo(2L)
+    }
+
+    @Test
+    fun `ACK 완료된 메시지는 pendingCount에 포함되지 않는다`() {
+        val eventId = UUID.randomUUID()
+        gateway.ensureGroup(eventId, GROUP)
+        val messageId1 = gateway.add(orderMessage(eventId))
+        gateway.add(orderMessage(eventId))
+        gateway.read(eventId, GROUP, CONSUMER, READ_COUNT)
+        gateway.ack(eventId, GROUP, messageId1) // 1개만 ACK
+
+        assertThat(gateway.pendingCount(eventId, GROUP)).isEqualTo(1L)
+    }
+
     private fun remainingRecordIds(eventId: UUID): List<String> = redisTemplate
         .opsForStream<String, String>()
         .range("queue:order:$eventId", Range.unbounded())

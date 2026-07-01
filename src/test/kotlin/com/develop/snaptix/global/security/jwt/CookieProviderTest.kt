@@ -13,7 +13,7 @@ class CookieProviderTest {
             refreshTokenExpirationSeconds = 604_800
         }
 
-    private val cookieProvider = CookieProvider(properties)
+    private val cookieProvider = CookieProvider(cookieSecure = false, properties)
 
     @Test
     fun `access token cookie는 보안 속성과 만료 시간을 포함한다`() {
@@ -24,7 +24,7 @@ class CookieProviderTest {
         assertThat(cookie.path).isEqualTo("/")
         assertThat(cookie.maxAge.seconds).isEqualTo(600)
         assertThat(cookie.isHttpOnly).isTrue()
-        assertThat(cookie.isSecure).isTrue()
+        assertThat(cookie.isSecure).isFalse() // 테스트는 false, 운영은 true
         assertThat(cookie.sameSite).isEqualTo("Strict")
     }
 

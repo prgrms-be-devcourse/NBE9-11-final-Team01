@@ -1,6 +1,8 @@
 package com.develop.snaptix.global.security.jwt
 
+import com.develop.snaptix.global.exception.ErrorCode
 import com.develop.snaptix.global.security.auth.AuthenticatedUser
+import com.develop.snaptix.global.security.handler.SecurityErrorResponseWriter
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -16,6 +18,7 @@ private const val ROLE_PREFIX = "ROLE_"
 @Component
 class JwtAuthenticationFilter(
     private val jwtProvider: JwtProvider,
+    private val securityErrorResponseWriter: SecurityErrorResponseWriter,
 ) : OncePerRequestFilter() {
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -24,8 +27,21 @@ class JwtAuthenticationFilter(
     ) {
         val accessToken = request.extractAccessToken()
 
-        if (accessToken != null && jwtProvider.isValid(accessToken)) {
-            SecurityContextHolder.getContext().authentication = createAuthentication(accessToken)
+        if (accessToken != null) {
+            when (jwtProvider.validate(accessToken)) {
+                JwtValidationStatus.VALID ->
+                    SecurityContextHolder.getContext().authentication = createAuthentication(accessToken)
+
+                JwtValidationStatus.EXPIRED -> {
+                    securityErrorResponseWriter.write(response, ErrorCode.TOKEN_EXPIRED)
+                    return
+                }
+
+                JwtValidationStatus.INVALID -> {
+                    securityErrorResponseWriter.write(response, ErrorCode.TOKEN_INVALID)
+                    return
+                }
+            }
         }
 
         filterChain.doFilter(request, response)

@@ -21,11 +21,15 @@ data class RateLimitResult(
 )
 
 /**
- * IP 기반 Rate Limiting 게이트웨이.
+ * Rate Limiting 게이트웨이.
  *
- * `rate_limit:{ip}:sec`/`:min`에 원자 Lua(INCR + 최초 EXPIRE)로 슬라이딩 카운터를 둔다.
+ * `rate_limit:{key}:sec`/`:min`에 원자 Lua(INCR + 최초 EXPIRE)로 슬라이딩 카운터를 둔다.
  * 한도 정책값(초당·분당)은 호출부가 전달한다(게이트웨이는 정책을 보유하지 않는다).
- * 한계: IP 단위라 공유 IP(NAT) 뒤에서는 오탐 429 가능(MVP 허용).
+ *
+ * `key`는 특정 스코프에 종속되지 않은 임의의 문자열이다 — IP 주소일 수도, "user:{userId}"
+ * 같은 사용자 기준 키일 수도 있다(스코프 결정은 호출부 책임, `OrderIngestService` 참고).
+ * 순수 IP 기준으로만 쓰면 공유 IP(NAT) 뒤에서는 오탐 429가 가능하므로, 호출부는 보통
+ * 사용자 기준 한도와 IP 기준 한도를 병행 적용한다.
  */
 @Component
 class RateLimitRedisGateway(
@@ -37,12 +41,12 @@ class RateLimitRedisGateway(
     private val rateLimitScript: RedisScript<Long>,
 ) {
     fun hit(
-        ip: String,
+        key: String,
         limitPerSecond: Int,
         limitPerMinute: Int,
     ): RateLimitResult = executor.execute(RedisAction.RATE_LIMIT_CHECK) {
-        val secondCount = incrementWindow(keys.rateLimitSecond(ip), ttl.rateLimitSecond)
-        val minuteCount = incrementWindow(keys.rateLimitMinute(ip), ttl.rateLimitMinute)
+        val secondCount = incrementWindow(keys.rateLimitSecond(key), ttl.rateLimitSecond)
+        val minuteCount = incrementWindow(keys.rateLimitMinute(key), ttl.rateLimitMinute)
         when {
             secondCount > limitPerSecond -> RateLimitResult(false, ttl.rateLimitSecond)
             minuteCount > limitPerMinute -> RateLimitResult(false, ttl.rateLimitMinute)

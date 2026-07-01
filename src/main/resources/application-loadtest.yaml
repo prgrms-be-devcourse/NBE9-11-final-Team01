@@ -1,0 +1,24 @@
+spring:
+    datasource:
+        url: jdbc:mysql://localhost:3307/snaptix?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+        username: snaptix
+        password: snaptix1234
+        driver-class-name: com.mysql.cj.jdbc.Driver
+    data:
+        redis:
+            host: localhost
+            port: 6380
+    exposed:
+        generate-ddl: true   # 컨테이너 재기동 시 스키마 자동 생성
+
+logging:
+    file:
+        name: ./snaptix-loadtest.log
+    level:
+        root: INFO
+        com.develop.snaptix: DEBUG
+
+snaptix:
+    rate-limit:
+        ip-per-second: 1000
+        ip-per-minute: 6000

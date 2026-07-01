@@ -5,6 +5,7 @@ import com.develop.snaptix.domain.reservation.service.ReconcileService
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
+import com.develop.snaptix.global.observability.RebuildMetrics
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
@@ -27,6 +28,7 @@ class RebuildService(
     private val rebuildRedisWriter: RebuildRedisWriter,
     private val rebuildCoordinator: RebuildCoordinator,
     private val readOnlyModeHolder: ReadOnlyModeHolder,
+    private val rebuildMetrics: RebuildMetrics,
     private val alertService: AlertService,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
@@ -35,10 +37,12 @@ class RebuildService(
     @Suppress("TooGenericExceptionCaught") // 광역 catch: 어느 단계 실패든 Read-Only·락 해제 보장
     fun rebuild() {
         if (!rebuildCoordinator.tryAcquire()) {
+            rebuildMetrics.recordSkipped()
             logger.atInfo { message = "Rebuild skipped: lock not acquired (another instance running)" }
             return
         }
 
+        val startNanos = System.nanoTime()
         readOnlyModeHolder.enable()
         val now = Instant.now(clock) // 진입 시 1회 고정 → 모든 단계 공유
         alertService.notify(AlertContext(trigger = AlertTrigger.REBUILD_STARTED))
@@ -47,8 +51,17 @@ class RebuildService(
             reconcileService.reconcileExpired(now) // (a) 만료 PENDING → RELEASED 먼저
             val snapshot = rebuildSnapshotReader.read(now) // 단일 일관 스냅샷
             applySnapshot(snapshot) // (b) event:info → (c+d) stock·claimed
-            notifyCompleted(snapshot, startedAt = now)
+
+            // 재구축 작업 성공 → 알림 이전에 측정/기록(알림 레이턴시·실패와 분리)
+            rebuildMetrics.recordCompleted(
+                events = snapshot.events.size,
+                zones = snapshot.events.sumOf { it.zones.size },
+                durationNanos = System.nanoTime() - startNanos,
+            )
+
+            notifyCompleted(snapshot, startedAt = now) // best-effort: 실패해도 성공 판정 불변
         } catch (e: Exception) {
+            rebuildMetrics.recordFailed(System.nanoTime() - startNanos)
             alertService.notify(
                 AlertContext(
                     trigger = AlertTrigger.REBUILD_FAILED,
@@ -76,22 +89,27 @@ class RebuildService(
         }
     }
 
-    private fun notifyCompleted(
-        snapshot: RebuildSnapshot,
-        startedAt: Instant,
-    ) {
-        val durationMs = Duration.between(startedAt, Instant.now(clock)).toMillis()
-        val zoneCount = snapshot.events.sumOf { it.zones.size }
-        alertService.notify(
-            AlertContext(
-                trigger = AlertTrigger.REBUILD_COMPLETED,
-                fields =
-                    mapOf(
-                        "events" to snapshot.events.size,
-                        "zones" to zoneCount,
-                        "durationMs" to durationMs,
-                    ),
-            ),
-        )
+    @Suppress("TooGenericExceptionCaught") // 완료 알림은 best-effort — 재구축 성공 판정에 영향 금지
+    private fun notifyCompleted(snapshot: RebuildSnapshot, startedAt: Instant) {
+        try {
+            val durationMs = Duration.between(startedAt, Instant.now(clock)).toMillis()
+            val zoneCount = snapshot.events.sumOf { it.zones.size }
+            alertService.notify(
+                AlertContext(
+                    trigger = AlertTrigger.REBUILD_COMPLETED,
+                    fields =
+                        mapOf(
+                            "events" to snapshot.events.size,
+                            "zones" to zoneCount,
+                            "durationMs" to durationMs,
+                        ),
+                ),
+            )
+        } catch (e: Exception) {
+            logger.atWarn {
+                message = "Rebuild completion notify failed (rebuild itself succeeded)"
+                cause = e
+            }
+        }
     }
 }

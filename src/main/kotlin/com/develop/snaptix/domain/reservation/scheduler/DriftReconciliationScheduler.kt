@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.reservation.scheduler
 
 import com.develop.snaptix.domain.reservation.service.DriftReconciliationService
+import com.develop.snaptix.global.observability.DriftMetrics
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -19,10 +20,13 @@ import java.time.Instant
 @Component
 class DriftReconciliationScheduler(
     private val driftReconciliationService: DriftReconciliationService,
+    private val driftMetrics: DriftMetrics,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
     @Scheduled(cron = "\${reconcile.drift-cron}")
     fun checkDrift() {
-        driftReconciliationService.checkDrift(Instant.now(clock))
+        val start = System.nanoTime()
+        val report = driftReconciliationService.checkDrift(Instant.now(clock))
+        driftMetrics.record(report, System.nanoTime() - start)
     }
 }

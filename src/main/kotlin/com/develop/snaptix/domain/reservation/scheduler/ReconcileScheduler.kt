@@ -1,6 +1,7 @@
 package com.develop.snaptix.domain.reservation.scheduler
 
 import com.develop.snaptix.domain.reservation.service.ReconcileService
+import com.develop.snaptix.global.observability.ReconcileMetrics
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.scheduling.annotation.Scheduled
@@ -15,6 +16,7 @@ import java.time.Instant
 @Component
 class ReconcileScheduler(
     private val reconcileService: ReconcileService,
+    private val reconcileMetrics: ReconcileMetrics,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -23,7 +25,15 @@ class ReconcileScheduler(
     @Scheduled(cron = "\${reconcile.scheduler-cron}") // 기본값 포함
     fun reconcile() {
         try {
+            // reconcile() try 블록 — 기존 "val report = ..." 줄을 이 3줄로 교체
+            val start = System.nanoTime()
             val report = reconcileService.reconcileExpired(Instant.now(clock))
+            reconcileMetrics.record(
+                report,
+                System.nanoTime() - start,
+                ReconcileMetrics.Trigger.SCHEDULED,
+            )
+
             logger.atInfo {
                 message = "Scheduled reconcile finished"
                 payload =

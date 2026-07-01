@@ -72,6 +72,23 @@ class OrderStreamGateway(
     }
 
     /**
+     * XPENDING 전체 건수 — 현재 PEL 적체 깊이 게이지 갱신용.
+     *
+     * 스트림 키가 없거나 그룹이 아직 생성되지 않은 경우 0을 반환한다.
+     */
+    fun pendingCount(
+        eventPublicId: UUID,
+        group: String,
+    ): Long = executor.execute(RedisAction.STREAM_DEPTH_CHECK) {
+        val streamKey = keys.queueOrder(eventPublicId)
+        if (redis.hasKey(streamKey) != true) return@execute 0L
+        redis
+            .opsForStream<String, String>()
+            .pending(streamKey, group)
+            ?.totalPendingMessages ?: 0L
+    }
+
+    /**
      * XGROUP CREATE(MKSTREAM). 그룹이 이미 있으면(BUSYGROUP) 멱등 무시한다.
      * createGroup은 MKSTREAM이므로 스트림이 없으면 함께 생성한다.
      */

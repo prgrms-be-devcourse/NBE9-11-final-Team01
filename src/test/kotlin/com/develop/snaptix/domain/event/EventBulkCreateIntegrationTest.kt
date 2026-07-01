@@ -87,6 +87,20 @@ class EventBulkCreateIntegrationTest(
     }
 
     @Test
+    fun `인증 없이 이벤트와 구역을 등록할 수 없다`() {
+        mockMvc
+            .post("/api/v1/admin/events") {
+                contentType = MediaType.APPLICATION_JSON
+                content = createRequest()
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value(ErrorCode.UNAUTHORIZED.code) }
+            }
+
+        assertEventAndZoneTablesAreEmpty()
+    }
+
+    @Test
     fun `USER 권한은 이벤트와 구역을 등록할 수 없다`() {
         mockMvc
             .post("/api/v1/admin/events") {
@@ -153,10 +167,71 @@ class EventBulkCreateIntegrationTest(
         assertEventAndZoneTablesAreEmpty()
     }
 
+    @Test
+    fun `구역 목록이 비어 있으면 이벤트와 구역을 등록할 수 없다`() {
+        mockMvc
+            .post("/api/v1/admin/events") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content = createRequest(zones = "[]")
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+            }
+
+        assertEventAndZoneTablesAreEmpty()
+    }
+
+    @Test
+    fun `필수 이벤트 정보가 비어 있으면 이벤트와 구역을 등록할 수 없다`() {
+        mockMvc
+            .post("/api/v1/admin/events") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    createRequest()
+                        .replace("\"name\": \"2027 SnapTix Concert\"", "\"name\": \"\"")
+                        .replace("\"location\": \"KSPO DOME\"", "\"location\": \"\"")
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+            }
+
+        assertEventAndZoneTablesAreEmpty()
+    }
+
+    @Test
+    fun `구역명이 비어 있으면 이벤트와 구역을 등록할 수 없다`() {
+        mockMvc
+            .post("/api/v1/admin/events") {
+                with(user("admin").roles("ADMIN"))
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    createRequest(
+                        zones =
+                            """
+                            [
+                              {
+                                "name": "",
+                                "unitPrice": 150000,
+                                "totalCapacity": 100
+                              }
+                            ]
+                            """.trimIndent(),
+                    )
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.code") { value(ErrorCode.VALIDATION_FAILED.code) }
+            }
+
+        assertEventAndZoneTablesAreEmpty()
+    }
+
     private fun createRequest(
         initialStatus: String = "PENDING",
         startTime: String = "2027-12-25T19:00:00+09:00",
         endTime: String = "2027-12-25T22:00:00+09:00",
+        zones: String = defaultZones(),
     ): String =
         """
         {
@@ -167,19 +242,24 @@ class EventBulkCreateIntegrationTest(
           "endTime": "$endTime",
           "initialStatus": "$initialStatus",
           "posterUrl": "https://cdn.snaptix.kr/events/test.jpg",
-          "zones": [
-            {
-              "name": "VIP",
-              "unitPrice": 150000,
-              "totalCapacity": 100
-            },
-            {
-              "name": "A",
-              "unitPrice": 99000,
-              "totalCapacity": 200
-            }
-          ]
+          "zones": $zones
         }
+        """.trimIndent()
+
+    private fun defaultZones(): String =
+        """
+        [
+          {
+            "name": "VIP",
+            "unitPrice": 150000,
+            "totalCapacity": 100
+          },
+          {
+            "name": "A",
+            "unitPrice": 99000,
+            "totalCapacity": 200
+          }
+        ]
         """.trimIndent()
 
     private fun assertEventAndZoneTablesAreEmpty() {

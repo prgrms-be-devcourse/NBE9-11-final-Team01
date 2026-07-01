@@ -1,7 +1,6 @@
 import dev.detekt.gradle.Detekt
 import dev.detekt.gradle.DetektCreateBaselineTask
 
-
 plugins {
     kotlin("jvm") version "2.3.21"
     kotlin("plugin.spring") version "2.3.21"
@@ -10,6 +9,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
     id("dev.detekt") version "2.0.0-alpha.3"
+    id("org.jetbrains.kotlinx.kover") version "0.9.8"
 }
 
 group = "com.develop"
@@ -86,6 +86,9 @@ dependencies {
     // Database
     runtimeOnly("com.mysql:mysql-connector-j")
 
+    // Prometheus
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+
     // JWT
     implementation("io.jsonwebtoken:jjwt-api:0.13.0")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.13.0")
@@ -130,4 +133,26 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    // 커버리지 제외할 클래스 패턴
+                    "*.config.*",
+                    "*.dto.*",
+                    "*Application*",
+                    "*.exception.*",
+                    "*.loadtest.*",
+                )
+            }
+        }
+        verify {
+            rule {
+                minBound(70)
+            }
+        }
+    }
 }

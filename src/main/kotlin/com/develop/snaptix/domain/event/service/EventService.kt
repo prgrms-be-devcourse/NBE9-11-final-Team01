@@ -13,6 +13,7 @@ import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
 import com.develop.snaptix.domain.zone.repository.ZoneRepository
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
 import com.develop.snaptix.global.redis.key.RedisKeyFactory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -35,6 +36,7 @@ class EventService(
     private val zoneRepository: ZoneRepository,
     private val eventRedisInitializer: EventRedisInitializer,
     private val eventRedisKeyCleaner: EventRedisKeyCleaner,
+    private val eventCacheGateway: EventCacheRedisGateway,
     private val redisKeyFactory: RedisKeyFactory,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -127,8 +129,41 @@ class EventService(
                 )
             }
 
-        cleanupTarget?.let(::cleanupRedisKeys)
+        // CLOSED 전이는 cleanupRedisKeys가 event:info 키 자체를 삭제하므로 별도 동기화가 불필요하다.
+        // 그 외 전이(PENDING→ON_SALE, ON_SALE→SOLD_OUT)는 event:info 캐시의 status 필드가
+        // 생성 시점 값으로 고정된 채 남아 있으므로, 여기서 캐시를 최신 상태로 맞춰준다.
+        // (수정 전에는 이 경로가 없어 캐시가 TTL(1h) 동안 계속 과거 상태로 남고,
+        //  OrderIngestService.validateEventStatus가 매번 "현재 판매 중인 이벤트가 아닙니다"로 거부했다.)
+        val target = cleanupTarget
+        if (target != null) {
+            cleanupRedisKeys(target)
+        } else {
+            syncEventCache(eventId, request.status)
+        }
+
         return response
+    }
+
+    /**
+     * event:info 캐시의 status 필드만 최신 값으로 교체한다.
+     * 다른 필드(name/description/location/시간/posterUrl/totalCapacity)는 이벤트 생성 이후
+     * 불변이므로 기존 캐시 값을 그대로 유지하고 status만 갱신하면 충분하다(EventInfo 스키마 참고).
+     *
+     * 캐시가 이미 만료/미존재(get()이 null)라면 여기서 새로 채우지 않는다 — 다음 조회 시
+     * cache miss로 처리되며, 이는 이 메서드가 다루는 "상태 동기화 누락" 문제와는 별개의
+     * 캐시 미스/재구축(reconcile) 경로이기 때문이다.
+     */
+    private fun syncEventCache(
+        eventId: String,
+        status: EventStatus,
+    ) {
+        try {
+            val eventPublicId = UUID.fromString(eventId)
+            val cached = eventCacheGateway.get(eventPublicId) ?: return
+            eventCacheGateway.put(eventPublicId, cached.copy(status = status.name))
+        } catch (exception: DataAccessException) {
+            logger.warn(exception) { "[EVENT_CACHE_SYNC_FAILED] eventPublicId=$eventId, status=$status" }
+        }
     }
 
     private fun cleanupRedisKeys(target: EventRedisCleanupTarget) {
