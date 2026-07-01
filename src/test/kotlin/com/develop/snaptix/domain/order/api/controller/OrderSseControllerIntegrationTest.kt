@@ -88,15 +88,26 @@ class OrderSseControllerIntegrationTest(
 
     @Test
     fun `JWT 없이 SSE 구독을 요청하면 401을 반환한다`() {
+        // 참고: 이 경로는 Security 필터(AuthenticationEntryPoint)에서 DispatcherServlet의
+        // 핸들러 매핑(및 그 producible media type 기록)보다 먼저 끊기므로, Accept 헤더를
+        // text/event-stream으로 제한해도 컨텐츠 협상 문제가 재현되지 않는다. 그래도 실제
+        // SSE 클라이언트와 동일한 조건으로 검증하기 위해 명시적으로 붙여둔다.
         mockMvc
             .perform(
-                get(ssePath(UUID.randomUUID().toString())),
+                get(ssePath(UUID.randomUUID().toString()))
+                    .accept(MediaType.TEXT_EVENT_STREAM),
             ).andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.code))
     }
 
     @Test
     fun `다른 사용자의 주문 SSE 구독은 403을 반환한다`() {
+        // 실제 SSE 클라이언트(xk6-sse, 브라우저 EventSource 등)는 Accept: text/event-stream을
+        // 보낸다. 이전에는 이 헤더가 없어 테스트가 항상 "*/*"로 통과했고, 그 결과
+        // OrderSseController가 produces=[TEXT_EVENT_STREAM_VALUE]로 매핑된 상태에서
+        // BusinessException이 GlobalExceptionHandler(JSON 응답)까지 전파되면
+        // HttpMediaTypeNotAcceptableException으로 크래시하는 버그를 이 테스트가 전혀
+        // 잡아내지 못했다(부하 테스트에서만 발견됨). 회귀 방지를 위해 명시적으로 붙인다.
         val ownerId = insertUser()
         val otherUserId = insertUser()
         val orderId = insertReservation(userId = ownerId)
@@ -104,32 +115,46 @@ class OrderSseControllerIntegrationTest(
         mockMvc
             .perform(
                 get(ssePath(orderId))
-                    .cookie(accessTokenCookie(otherUserId)),
+                    .cookie(accessTokenCookie(otherUserId))
+                    .accept(MediaType.TEXT_EVENT_STREAM),
             ).andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code").value(ErrorCode.FORBIDDEN_ACCESS.code))
     }
 
     @Test
     fun `존재하지 않는 주문 SSE 구독은 404를 반환한다`() {
+        // 위와 동일한 이유로 Accept: text/event-stream을 명시한다(NOT_FOUND도 같은
+        // BusinessException 경로를 타므로 동일한 컨텐츠 협상 문제에 노출돼 있었다).
         val userId = insertUser()
 
         mockMvc
             .perform(
                 get(ssePath(UUID.randomUUID().toString()))
-                    .cookie(accessTokenCookie(userId)),
+                    .cookie(accessTokenCookie(userId))
+                    .accept(MediaType.TEXT_EVENT_STREAM),
             ).andExpect(status().isNotFound)
             .andExpect(jsonPath("$.code").value(ErrorCode.NOT_FOUND.code))
     }
 
     @Test
     fun `USER 권한이 아니면 SSE 구독을 요청할 수 없다`() {
+        // 주의: 이 케이스(@PreAuthorize 실패 → AuthorizationDeniedException)는
+        // OrderSseController의 컨트롤러 로컬 예외 처리(BusinessException 전용)로 커버되지
+        // 않는다. AuthorizationDeniedException은 핸들러 메서드 진입 전 AOP에서 발생해
+        // GlobalExceptionHandler.handleAuthorizationDenied()(JSON 응답)로 가는데, 이 요청도
+        // 동일하게 produces=[TEXT_EVENT_STREAM_VALUE]로 매핑돼 있어 원리상 같은
+        // HttpMediaTypeNotAcceptableException 크래시에 노출돼 있을 수 있다. Accept 헤더를
+        // 붙였을 때 이 테스트가 실패하면 OrderSseController에 같은 우회 처리를
+        // AuthorizationDeniedException까지 확장해야 한다는 뜻이다 — 로컬에서 먼저 실행해
+        // 결과를 확인해달라.
         val adminId = insertUser(role = UserRole.ADMIN)
         val orderId = UUID.randomUUID().toString()
 
         mockMvc
             .perform(
                 get(ssePath(orderId))
-                    .cookie(accessTokenCookie(userId = adminId, role = UserRole.ADMIN)),
+                    .cookie(accessTokenCookie(userId = adminId, role = UserRole.ADMIN))
+                    .accept(MediaType.TEXT_EVENT_STREAM),
             ).andExpect(status().isForbidden)
             .andExpect(jsonPath("$.code").value(ErrorCode.ACCESS_DENIED.code))
     }
