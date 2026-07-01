@@ -20,6 +20,8 @@ class JwtAuthenticationFilter(
     private val jwtProvider: JwtProvider,
     private val securityErrorResponseWriter: SecurityErrorResponseWriter,
 ) : OncePerRequestFilter() {
+    override fun shouldNotFilterAsyncDispatch(): Boolean = false
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
