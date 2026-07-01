@@ -1,6 +1,14 @@
 spring:
     datasource:
-        url: jdbc:mysql://localhost:3307/snaptix?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+        # connectionTimeZone=SERVER : 드라이버가 mysql-loadtest 컨테이너에 실제 세션 시간대를 직접
+        # 물어봐서 변환 기준으로 삼는다. 파라미터를 아예 생략하면 기본값인 connectionTimeZone=LOCAL이
+        # 적용되어 "서버가 JVM 클라이언트(로컬 개발 PC, Asia/Seoul)와 같은 시간대"라고 잘못 가정하는데,
+        # 실제로 이 상태로 테스트해보니 9시간 드리프트가 그대로 재현됐다(ReservationRepositoryTimezoneTest
+        # 실패). 기존 serverTimezone=Asia/Seoul 하드코딩도 같은 이유로 틀린 값이었다. JDBC가
+        # timestamp 컬럼을 어긋나게 해석하면 reservations.created_at(DEFAULT CURRENT_TIMESTAMP) 기반
+        # HoldExpiryWorker의 5분 홀드 만료 판정이 깨진다
+        # (order-load 부하테스트 2026-07-01, 이슈 #359 하위 이슈 참고).
+        url: jdbc:mysql://localhost:3307/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&connectionTimeZone=SERVER
         username: snaptix
         password: snaptix1234
         driver-class-name: com.mysql.cj.jdbc.Driver

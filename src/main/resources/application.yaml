@@ -7,7 +7,17 @@ spring:
         include: secret
 
     datasource:
-        url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
+        # connectionTimeZone=SERVER : JDBC가 MySQL 서버에 세션 시간대를 직접 물어봐서(SELECT
+        # @@session.time_zone 상당) 변환 기준으로 삼는다. serverTimezone(레거시 파라미터, 값 고정)이나
+        # 파라미터 미지정(기본값 connectionTimeZone=LOCAL, "서버가 JVM 클라이언트와 같은 시간대"라고
+        # 그냥 가정)은 둘 다 위험하다 — 실제로 파라미터를 제거하고 테스트해보니 LOCAL 기본값이
+        # 개발자 PC의 JVM 시간대(Asia/Seoul)를 서버 시간대로 잘못 가정해, DB(UTC)의 CURRENT_TIMESTAMP
+        # 값을 9시간 과거로 해석하는 회귀가 재현됨(ReservationRepositoryTimezoneTest 실패,
+        # drift=PT8H59M59S). serverTimezone=Asia/Seoul로 고정했던 기존 설정도 같은 이유로 틀렸었다.
+        # SERVER 모드는 로컬 개발 PC의 시간대나 DB 컨테이너의 TZ 설정과 무관하게 항상 정확하다.
+        # (reservations.created_at DEFAULT CURRENT_TIMESTAMP → HoldExpiryWorker 5분 홀드 만료 판정
+        # 버그, order-load 부하테스트 2026-07-01, 이슈 #359 하위 이슈 참고)
+        url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&connectionTimeZone=SERVER&rewriteBatchedStatements=true
         username: ${SPRING_DATASOURCE_USERNAME:snaptix}
         password: ${SPRING_DATASOURCE_PASSWORD:snaptix1234}
         driver-class-name: com.mysql.cj.jdbc.Driver
