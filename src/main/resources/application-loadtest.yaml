@@ -17,3 +17,8 @@ logging:
     level:
         root: INFO
         com.develop.snaptix: DEBUG
+
+snaptix:
+    rate-limit:
+        ip-per-second: 1000
+        ip-per-minute: 6000

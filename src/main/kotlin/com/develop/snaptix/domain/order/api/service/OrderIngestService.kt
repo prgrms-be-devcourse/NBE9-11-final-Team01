@@ -9,6 +9,7 @@ import com.develop.snaptix.domain.order.observability.OrderMdc
 import com.develop.snaptix.domain.order.observability.OrderMetrics
 import com.develop.snaptix.global.exception.BusinessException
 import com.develop.snaptix.global.exception.ErrorCode
+import com.develop.snaptix.global.redis.config.RateLimitProperties
 import com.develop.snaptix.global.redis.gateway.EventCacheRedisGateway
 import com.develop.snaptix.global.redis.gateway.IdempotencyRedisGateway
 import com.develop.snaptix.global.redis.gateway.OrderStreamGateway
@@ -24,6 +25,7 @@ import java.util.UUID
 @Service
 class OrderIngestService(
     private val orderRateLimiter: RateLimitRedisGateway,
+    private val rateLimitProperties: RateLimitProperties,
     private val eventCacheGateway: EventCacheRedisGateway,
     private val backpressureGuard: BackpressureGuard,
     private val idempotencyGateway: IdempotencyRedisGateway,
@@ -35,6 +37,7 @@ class OrderIngestService(
 
     companion object {
         private const val SECONDS_IN_MINUTE = 60L
+        private const val USER_RATE_LIMIT_KEY_PREFIX = "user:"
     }
 
     /**
@@ -64,7 +67,7 @@ class OrderIngestService(
         // MDC 컨텍스트 설정 — OrderLoggingAspect 및 logback JSON 인코더가 수집
         OrderMdc.set(userId = userId, eventId = eventId, zoneId = zoneId)
         try {
-            checkRateLimit(ip)
+            checkRateLimit(userId, ip)
             val eventInfo = validateEventStatus(eventId)
             val totalCapacity =
                 eventInfo.totalCapacity
@@ -83,8 +86,36 @@ class OrderIngestService(
         }
     }
 
-    private fun checkRateLimit(ip: String) {
-        val limitResult = orderRateLimiter.hit(ip, 5, 20)
+    /**
+     * 사용자(userId) 기준과 IP 기준 두 한도를 모두 검사한다.
+     *
+     * 이전에는 IP 하나만 기준으로 삼아, 같은 IP(NAT/사내망/부하테스트 러너 등) 뒤에서
+     * 여러 사용자가 요청하면 사용자 수와 무관하게 IP 전체가 한도를 공유해 정상 요청까지
+     * 오탐 429로 막혔다. 사용자 기준 한도를 추가해 "1인당" 실질 한도는 유지하면서,
+     * IP 기준은 비인증 단계까지 포함하는 넉넉한 최소 방어선으로 남긴다.
+     */
+    private fun checkRateLimit(
+        userId: Long,
+        ip: String,
+    ) {
+        enforceRateLimit(
+            key = "$USER_RATE_LIMIT_KEY_PREFIX$userId",
+            limitPerSecond = rateLimitProperties.userPerSecond,
+            limitPerMinute = rateLimitProperties.userPerMinute,
+        )
+        enforceRateLimit(
+            key = ip,
+            limitPerSecond = rateLimitProperties.ipPerSecond,
+            limitPerMinute = rateLimitProperties.ipPerMinute,
+        )
+    }
+
+    private fun enforceRateLimit(
+        key: String,
+        limitPerSecond: Int,
+        limitPerMinute: Int,
+    ) {
+        val limitResult = orderRateLimiter.hit(key, limitPerSecond, limitPerMinute)
         if (!limitResult.allowed) {
             throw BusinessException(
                 ErrorCode.RATE_LIMIT_EXCEEDED,

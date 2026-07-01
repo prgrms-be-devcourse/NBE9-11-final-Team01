@@ -55,10 +55,12 @@ class RedisKeyFactory {
         eventPublicId: UUID,
     ): String = "order:pending:$userId:$eventPublicId"
 
-    // ── Rate limit: IP 단위, 초/분 두 윈도우 ───────────────────────────
-    fun rateLimitSecond(ip: String): String = "rate_limit:$ip:sec"
+    // ── Rate limit: 호출부가 정의한 임의의 키(IP 문자열 또는 "user:{userId}" 등), 초/분 두 윈도우 ──
+    // 이전에는 IP 전용이었으나, 공유 IP(NAT/부하테스트)에서 사용자별 오탐 429를 막기 위해
+    // 사용자 기준 한도를 병행 도입하면서 범용 문자열 키로 확장했다(RateLimitRedisGateway 참고).
+    fun rateLimitSecond(key: String): String = "rate_limit:$key:sec"
 
-    fun rateLimitMinute(ip: String): String = "rate_limit:$ip:min"
+    fun rateLimitMinute(key: String): String = "rate_limit:$key:min"
 
     // ── public_id(UUID) 키잉 ───────────────────────────────────────────
 

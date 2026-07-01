@@ -1,61 +1,61 @@
 spring:
-  application:
-    name: snaptix
+    application:
+        name: snaptix
 
-  profiles:
-    active: local  # 운영은 app.env로 SPRING_PROFILES_ACTIVE=dev주입
-    include: secret
+    profiles:
+        active: local  # 운영은 app.env로 SPRING_PROFILES_ACTIVE=dev주입
+        include: secret
 
-  datasource:
-    url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
-    username: ${SPRING_DATASOURCE_USERNAME:snaptix}
-    password: ${SPRING_DATASOURCE_PASSWORD:snaptix1234}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    datasource:
+        url: jdbc:mysql://localhost:3306/snaptix?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
+        username: ${SPRING_DATASOURCE_USERNAME:snaptix}
+        password: ${SPRING_DATASOURCE_PASSWORD:snaptix1234}
+        driver-class-name: com.mysql.cj.jdbc.Driver
 
-  exposed:
-    generate-ddl: true
+    exposed:
+        generate-ddl: true
 
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD:}
+    data:
+        redis:
+            host: ${SPRING_DATA_REDIS_HOST:localhost}
+            port: ${SPRING_DATA_REDIS_PORT:6379}
+            password: ${SPRING_DATA_REDIS_PASSWORD:}
 
 server:
-  port: 8080
+    port: 8080
 
 app:
     cookie:
         secure: false
 
 springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
+    swagger-ui:
+        path: /swagger-ui.html
 
 resilience4j:
-  circuitbreaker:
-    instances:
-      redis:
-        sliding-window-type: COUNT_BASED
-        sliding-window-size: 10
-        failure-rate-threshold: 50
-        slow-call-duration-threshold: 2s
-        slow-call-rate-threshold: 80
-        wait-duration-in-open-state: 10s
-        permitted-number-of-calls-in-half-open-state: 3
-        automatic-transition-from-open-to-half-open-enabled: true
-        record-failure-predicate: com.develop.snaptix.global.aop.aspect.RedisExceptionPredicate
-        ignore-exceptions:
-          - com.develop.snaptix.global.exception.BusinessException
+    circuitbreaker:
+        instances:
+            redis:
+                sliding-window-type: COUNT_BASED
+                sliding-window-size: 10
+                failure-rate-threshold: 50
+                slow-call-duration-threshold: 2s
+                slow-call-rate-threshold: 80
+                wait-duration-in-open-state: 10s
+                permitted-number-of-calls-in-half-open-state: 3
+                automatic-transition-from-open-to-half-open-enabled: true
+                record-failure-predicate: com.develop.snaptix.global.aop.aspect.RedisExceptionPredicate
+                ignore-exceptions:
+                    - com.develop.snaptix.global.exception.BusinessException
 
 alert:
-  slack:
-    enabled: false
-    webhook-url: ${SLACK_WEBHOOK_URL:}
-    channel: ${SLACK_CHANNEL:#ticketing-redis-alerts}
-    mention-on-critical: false
-  throttle:
-    window-seconds: 300
+    slack:
+        enabled: false
+        webhook-url: ${SLACK_WEBHOOK_URL:}
+        channel: ${SLACK_CHANNEL:#ticketing-redis-alerts}
+        mention-on-critical: false
+    throttle:
+        window-seconds: 300
 
 event:
     cleanup:
@@ -66,60 +66,69 @@ event:
 
 # Rebuild & Reconcile (Epic 13)
 reconcile:
-  hold-window: 5m          # 유효 점유 홀드 윈도우 (cutoff = now - holdWindow)
-  scheduler-cron: "0 */10 * * * *"   # 만료 정산 10분 주기 (Story 13.3-2차)
-  drift-cron: "0 */30 * * * *"       # 상시 드리프트 정산 30분 주기 (Story 13.4)
-  rebuild-lock-ttl: 5m     # 다중 인스턴스 단일 재구축 락 TTL
+    hold-window: 5m          # 유효 점유 홀드 윈도우 (cutoff = now - holdWindow)
+    scheduler-cron: "0 */10 * * * *"   # 만료 정산 10분 주기 (Story 13.3-2차)
+    drift-cron: "0 */30 * * * *"       # 상시 드리프트 정산 30분 주기 (Story 13.4)
+    rebuild-lock-ttl: 5m     # 다중 인스턴스 단일 재구축 락 TTL
 
 management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-  endpoint:
-    health:
-      probes:
-        enabled: true
-      show-details: never
-  metrics:
-    tags:
-      application: snaptix
-      env: ${spring.profiles.active}
+    endpoints:
+        web:
+            exposure:
+                include: health,info,metrics,prometheus
+    endpoint:
+        health:
+            probes:
+                enabled: true
+            show-details: never
+    metrics:
+        tags:
+            application: snaptix
+            env: ${spring.profiles.active}
 
 realtime:
-  sse:
-    timeout: 8m
-    heartbeat-interval: 30s
+    sse:
+        timeout: 8m
+        heartbeat-interval: 30s
 
 snaptix:
-  redis:
-    ttl:
-      ingest-envelope: 8m       # 멱등/소유권 봉투(권장 8분, 부하테스트로 조정)
-      order-hold: 5m            # ORDER_HOLD = 워커 재앵커링 기준
-      webhook-processed: 10m
-      payment-approve: 60s
-      event-info: 1h            # Story 1.1 / 11.2 / 13.2 일치
-      order-pending: 2m
-      rate-limit-second: 1s
-      rate-limit-minute: 60s
+    redis:
+        ttl:
+            ingest-envelope: 8m       # 멱등/소유권 봉투(권장 8분, 부하테스트로 조정)
+            order-hold: 5m            # ORDER_HOLD = 워커 재앵커링 기준
+            webhook-processed: 10m
+            payment-approve: 60s
+            event-info: 1h            # Story 1.1 / 11.2 / 13.2 일치
+            order-pending: 2m
+            rate-limit-second: 1s
+            rate-limit-minute: 60s
+    rate-limit:
+        # 사용자(userId) 기준 — 기존 IP 전용 한도값(5/20)을 그대로 승계, "1인당" 실질 한도
+        user-per-second: 5
+        user-per-minute: 20
+        # IP 기준 — 공유 IP(NAT/사내망/부하테스트)에서 다수의 정상 사용자가 몰려도 오탐 429가
+        # 나지 않도록 사용자 한도보다 넉넉하게. 비인증 단계까지 포함하는 최소 방어선.
+        # 제안값이며 실제 트래픽 패턴에 맞춰 팀 정책으로 조정 필요.
+        ip-per-second: 30
+        ip-per-minute: 300
 
 payment:
-  mock:
-    webhook:
-      secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}
+    mock:
+        webhook:
+            secret: ${MOCK_PAYMENT_WEBHOOK_SECRET:snaptix-local-mock-webhook-secret}
 
 order:
-  stream:
-    consumer-group: order-workers
-    trim:
-      enabled: true
-      fixed-delay: 3m
-  consumer:
-    claim-idle-ms: 30000   # PEL 회수 기준 유휴 시간 (p99 처리시간보다 크게)
-    claim-schedule-ms: 10000  # 회수 스케줄 주기
-  hold:
-      timeout-minutes: 5                  # ORDER_HOLD TTL 기준 (snaptix.redis.ttl.order-hold 와 일치)
-      scheduler-fixed-delay-ms: 60000    # 배치 주기 — 1분 (fixedDelay: 이전 실행 완료 후 대기)
-      batch-size: 100                     # 단일 배치 최대 처리 건수 (대량 만료 방어)
-      keyspace-listener:
-          enabled: false
+    stream:
+        consumer-group: order-workers
+        trim:
+            enabled: true
+            fixed-delay: 3m
+    consumer:
+        claim-idle-ms: 30000   # PEL 회수 기준 유휴 시간 (p99 처리시간보다 크게)
+        claim-schedule-ms: 10000  # 회수 스케줄 주기
+    hold:
+        timeout-minutes: 5                  # ORDER_HOLD TTL 기준 (snaptix.redis.ttl.order-hold 와 일치)
+        scheduler-fixed-delay-ms: 60000    # 배치 주기 — 1분 (fixedDelay: 이전 실행 완료 후 대기)
+        batch-size: 100                     # 단일 배치 최대 처리 건수 (대량 만료 방어)
+        keyspace-listener:
+            enabled: false
